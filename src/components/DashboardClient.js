@@ -90,12 +90,29 @@ export default function DashboardClient({ initialProjects, session }) {
     }
   };
 
-  const updateProject = async (projectId, updatedProject) => {
-    // Optimistic update - update UI immediately
-    const previousProjects = [...projects];
-    setProjects(prevProjects => 
-      prevProjects.map(p => p.id === projectId ? updatedProject : p)
-    );
+  const updateProject = async (projectId, updatedProjectOrFunction) => {
+    // ALWAYS do optimistic update IMMEDIATELY
+    let updatedProject;
+    
+    if (typeof updatedProjectOrFunction === 'function') {
+      // Functional update - get latest state
+      setProjects(prevProjects => {
+        const currentProject = prevProjects.find(p => p.id === projectId);
+        if (!currentProject) return prevProjects;
+        
+        updatedProject = updatedProjectOrFunction(currentProject);
+        return prevProjects.map(p => p.id === projectId ? updatedProject : p);
+      });
+    } else {
+      // Direct object update
+      updatedProject = updatedProjectOrFunction;
+      const previousProjects = [...projects];
+      setProjects(prevProjects => 
+        prevProjects.map(p => p.id === projectId ? updatedProject : p)
+      );
+    }
+
+    if (!updatedProject) return;
 
     try {
       const response = await fetch(`/api/projects/${projectId}`, {
@@ -106,19 +123,13 @@ export default function DashboardClient({ initialProjects, session }) {
 
       if (!response.ok) throw new Error('Failed to update project');
       
-      // Update with server response to ensure consistency
-      const updated = await response.json();
-      setProjects(prevProjects => 
-        prevProjects.map(p => p.id === projectId ? updated : p)
-      );
-      
-      // Refresh to get server state
+      // Don't update with server response - optimistic update is sufficient
+      // This prevents flickering and reordering issues
       router.refresh();
     } catch (e) {
       console.error('Error updating project:', e);
-      // Rollback on error
-      setProjects(previousProjects);
-      showToast('Failed to update project. Changes have been reverted.', 'error');
+      // On error, just show toast - user can refresh to get server state
+      showToast('Failed to update project. Please refresh the page.', 'error');
     }
   };
 

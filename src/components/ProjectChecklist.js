@@ -42,10 +42,11 @@ export default function ProjectChecklist({ project, onUpdate, onDelete }) {
 
   const finishEditing = (field) => {
     if (editingField === field) {
-      onUpdate({
-        ...project,
+      // Use functional update
+      onUpdate((currentProject) => ({
+        ...currentProject,
         [field]: tempValue
-      });
+      }));
       setEditingField(null);
       setTempValue('');
     }
@@ -65,10 +66,11 @@ export default function ProjectChecklist({ project, onUpdate, onDelete }) {
       notes: ''
     };
     
-    onUpdate({
-      ...project,
-      tasks: [...project.tasks, taskToAdd]
-    });
+    // Use functional update
+    onUpdate((currentProject) => ({
+      ...currentProject,
+      tasks: [...currentProject.tasks, taskToAdd]
+    }));
     
     setNewTask({
       name: '',
@@ -82,20 +84,22 @@ export default function ProjectChecklist({ project, onUpdate, onDelete }) {
 
   const deleteTask = (taskId) => {
     if (confirm('Are you sure you want to delete this task?')) {
-      onUpdate({
-        ...project,
-        tasks: project.tasks.filter(task => task.id !== taskId)
-      });
+      // Use functional update
+      onUpdate((currentProject) => ({
+        ...currentProject,
+        tasks: currentProject.tasks.filter(task => task.id !== taskId)
+      }));
     }
   };
 
   const updateTask = (taskId, updates) => {
-    onUpdate({
-      ...project,
-      tasks: project.tasks.map(task =>
+    // Use functional update to always work with latest project state
+    onUpdate((currentProject) => ({
+      ...currentProject,
+      tasks: currentProject.tasks.map(task =>
         task.id === taskId ? { ...task, ...updates } : task
       )
-    });
+    }));
   };
 
   const completedTasks = project.tasks.filter(t => t.status === 'Completed').length;
@@ -581,11 +585,6 @@ export default function ProjectChecklist({ project, onUpdate, onDelete }) {
                     <div className="flex items-center gap-1.5">
                       <h4 className={`text-sm font-medium leading-tight ${task.status === 'Completed' ? 'line-through text-gray-500' : 'text-gray-900'}`}>
                         {task.name}
-                        {task.required && (
-                          <span className="ml-1.5 text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full font-medium">
-                            Required
-                          </span>
-                        )}
                       </h4>
                     </div>
                     <p className="text-xs text-gray-600 leading-snug mt-0.5">{task.description}</p>

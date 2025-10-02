@@ -1032,7 +1032,10 @@ export default function TableView({ projects, onUpdateProject, onReorderProjects
                           <td className={`px-2 py-2 text-center border-l sticky right-0 ${isEvenRow ? 'bg-white' : 'bg-gray-50'} z-10 hover:bg-blue-50`}>
                             {stats.total === stats.blocked ? (
                               // All tasks are blocked - show N/A
-                              <div className="text-lg font-bold text-red-600">N/A</div>
+                              <>
+                                <div className="text-lg font-bold text-red-600">N/A</div>
+                                <div className="text-[10px] text-gray-600">0/0</div>
+                              </>
                             ) : (
                               // Normal display
                               <>
