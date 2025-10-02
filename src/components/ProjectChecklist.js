@@ -562,14 +562,15 @@ export default function ProjectChecklist({ project, onUpdate, onDelete }) {
               filteredTasks.map((task) => (
               <div key={task.id} className="group">
                 <div
-                  className={`flex items-center gap-2 p-2.5 rounded-lg border transition-all ${
+                  className={`flex items-start gap-2 p-2.5 rounded-lg border transition-all ${
                     task.status === 'Completed'
                       ? 'bg-green-50 border-green-200'
                       : 'bg-white border-gray-200 hover:border-gray-300 hover:shadow-sm'
                   }`}
                 >
-                  {/* Checkbox */}
-                  <div className="flex items-center flex-shrink-0">
+                  {/* Left Column: Checkbox and Info Icon */}
+                  <div className="flex flex-col items-center gap-1 flex-shrink-0">
+                    {/* Checkbox */}
                     <input
                       type="checkbox"
                       checked={task.status === 'Completed'}
@@ -578,6 +579,31 @@ export default function ProjectChecklist({ project, onUpdate, onDelete }) {
                       })}
                       className="w-5 h-5 text-blue-600 rounded-md focus:ring-2 focus:ring-blue-500 cursor-pointer accent-blue-600"
                     />
+                    
+                    {/* User Info Icon - Shows who last updated */}
+                    {task.updated_by_user_name && (
+                      <div className="relative group">
+                        <svg 
+                          className="w-3.5 h-3.5 text-gray-400 group-hover:text-blue-600 transition-colors cursor-help" 
+                          fill="none" 
+                          stroke="currentColor" 
+                          viewBox="0 0 24 24"
+                        >
+                          <path 
+                            strokeLinecap="round" 
+                            strokeLinejoin="round" 
+                            strokeWidth={2} 
+                            d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" 
+                          />
+                        </svg>
+                        {/* Tooltip - only shows on icon hover */}
+                        <div className="absolute left-0 top-5 hidden group-hover:block z-50 whitespace-nowrap pointer-events-none">
+                          <div className="bg-gray-900 text-white text-xs rounded py-1 px-2 shadow-lg">
+                            {task.updated_by_user_name}
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Task Info */}
@@ -617,10 +643,10 @@ export default function ProjectChecklist({ project, onUpdate, onDelete }) {
                   </select>
 
                   {/* Action Menu Dropdown */}
-                  <div className="relative flex-shrink-0">
+                  <div className="relative w-full">
                     <button
                       onClick={() => setShowMenuFor(showMenuFor === task.id ? null : task.id)}
-                      className="p-1.5 rounded-lg text-gray-600 hover:bg-gray-100 transition-colors"
+                      className="p-1.5 rounded-lg text-gray-600 hover:bg-gray-100 transition-colors w-full"
                       title="More actions"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

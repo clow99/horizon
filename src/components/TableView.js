@@ -923,11 +923,11 @@ export default function TableView({ projects, onUpdateProject, onReorderProjects
                                   </div>
                                 ) : (
                                   <>
-                                    <div className="flex flex-col items-center gap-1.5">
-                                      {/* Top row: Checkbox and Status Dropdown */}
-                                      <div className="flex items-center justify-center gap-2 w-full">
+                                    <div className="flex items-start gap-2">
+                                      {/* Left column: Checkbox and Info Icon */}
+                                      <div className="flex flex-col items-center gap-1 flex-shrink-0">
                                         {/* Custom Styled Checkbox */}
-                                        <label className="flex-shrink-0 cursor-pointer group">
+                                        <label className="cursor-pointer group">
                                           <div className="relative">
                                             <input
                                               type="checkbox"
@@ -976,6 +976,34 @@ export default function TableView({ projects, onUpdateProject, onReorderProjects
                                           </div>
                                         </label>
 
+                                        {/* User Info Icon - Shows who last updated */}
+                                        {task.updated_by_user_name && (
+                                          <div className="relative [&>svg:hover+div]:block">
+                                            <svg 
+                                              className="w-3.5 h-3.5 text-gray-400 hover:text-blue-600 transition-colors cursor-help" 
+                                              fill="none" 
+                                              stroke="currentColor" 
+                                              viewBox="0 0 24 24"
+                                            >
+                                              <path 
+                                                strokeLinecap="round" 
+                                                strokeLinejoin="round" 
+                                                strokeWidth={2} 
+                                                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" 
+                                              />
+                                            </svg>
+                                            {/* Tooltip - only shows on icon hover */}
+                                            <div className="absolute left-1/2 -translate-x-1/2 top-5 hidden z-50 whitespace-nowrap pointer-events-none">
+                                              <div className="bg-gray-900 text-white text-xs rounded py-1 px-2 shadow-lg">
+                                                {task.updated_by_user_name}
+                                              </div>
+                                            </div>
+                                          </div>
+                                        )}
+                                      </div>
+
+                                      {/* Right column: Status Dropdown */}
+                                      <div className="flex-1 min-w-0">
                                         {/* Status Dropdown */}
                                         <select
                                           value={task.status}
@@ -983,7 +1011,7 @@ export default function TableView({ projects, onUpdateProject, onReorderProjects
                                             status: e.target.value
                                           })}
                                           disabled={isUpdating}
-                                          className={`flex-1 min-w-0 px-2 py-1 text-xs rounded border focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all ${
+                                          className={`w-full px-2 py-1 text-xs rounded border focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all ${
                                             task.status === 'Completed'
                                               ? 'bg-green-50 border-green-300 text-green-800 font-medium'
                                               : task.status === 'In Progress'
@@ -1001,17 +1029,7 @@ export default function TableView({ projects, onUpdateProject, onReorderProjects
                                         </select>
                                       </div>
 
-                                      {/* Bottom row: User Profile Picture - Shows who last updated */}
-                                      {task.updated_by_user_image && (
-                                        <div className="flex items-center justify-center gap-1.5 text-[10px] text-gray-600" title={`Last updated by ${task.updated_by_user_name || 'Unknown'}`}>
-                                          <img 
-                                            src={task.updated_by_user_image} 
-                                            alt={task.updated_by_user_name || 'User'} 
-                                            className="w-5 h-5 rounded-full border border-gray-300 object-cover"
-                                          />
-                                          <span className="truncate max-w-[100px]">{task.updated_by_user_name || 'Unknown'}</span>
-                                        </div>
-                                      )}
+                      
                                     </div>
 
                                     {/* Delete Button - Shows on hover */}
