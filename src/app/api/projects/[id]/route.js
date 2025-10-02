@@ -73,41 +73,84 @@ export async function PUT(request, { params }) {
 
         if (task.id && existingTaskIds.includes(task.id)) {
           // Update existing task with user tracking
-          await query(
-            'UPDATE tasks SET name = ?, category = ?, status = ?, required = ?, notes = ?, completed_at = ?, updated_by_user_id = ?, updated_by_user_name = ?, updated_by_user_image = ? WHERE id = ?',
-            [
-              task.name,
-              task.category || null,
-              task.status || 'Not Started',
-              task.required || false,
-              task.notes || null,
-              completedAt,
-              session.user.id,
-              session.user.name || null,
-              session.user.image || null,
-              task.id
-            ]
-          );
+          try {
+            await query(
+              'UPDATE tasks SET name = ?, category = ?, status = ?, required = ?, notes = ?, completed_at = ?, updated_by_user_id = ?, updated_by_user_name = ?, updated_by_user_image = ? WHERE id = ?',
+              [
+                task.name,
+                task.category || null,
+                task.status || 'Not Started',
+                task.required || false,
+                task.notes || null,
+                completedAt,
+                session.user.id,
+                session.user.name || null,
+                session.user.image || null,
+                task.id
+              ]
+            );
+          } catch (dbError) {
+            // If user tracking columns don't exist, fall back to basic update
+            if (dbError.code === 'ER_BAD_FIELD_ERROR') {
+              console.log('User tracking columns not available, using basic update');
+              await query(
+                'UPDATE tasks SET name = ?, category = ?, status = ?, required = ?, notes = ?, completed_at = ? WHERE id = ?',
+                [
+                  task.name,
+                  task.category || null,
+                  task.status || 'Not Started',
+                  task.required || false,
+                  task.notes || null,
+                  completedAt,
+                  task.id
+                ]
+              );
+            } else {
+              throw dbError;
+            }
+          }
         } else {
           // Insert new task with user tracking
           const { v4: uuidv4 } = await import('uuid');
           const taskId = task.id || uuidv4();
-          await query(
-            'INSERT INTO tasks (id, project_id, name, category, status, required, notes, completed_at, updated_by_user_id, updated_by_user_name, updated_by_user_image) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-            [
-              taskId,
-              id,
-              task.name,
-              task.category || null,
-              task.status || 'Not Started',
-              task.required || false,
-              task.notes || null,
-              completedAt,
-              session.user.id,
-              session.user.name || null,
-              session.user.image || null
-            ]
-          );
+          try {
+            await query(
+              'INSERT INTO tasks (id, project_id, name, category, status, required, notes, completed_at, updated_by_user_id, updated_by_user_name, updated_by_user_image) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+              [
+                taskId,
+                id,
+                task.name,
+                task.category || null,
+                task.status || 'Not Started',
+                task.required || false,
+                task.notes || null,
+                completedAt,
+                session.user.id,
+                session.user.name || null,
+                session.user.image || null
+              ]
+            );
+          } catch (dbError) {
+            // If user tracking columns don't exist, fall back to basic insert
+            if (dbError.code === 'ER_BAD_FIELD_ERROR') {
+              console.log('User tracking columns not available, using basic insert');
+              await query(
+                'INSERT INTO tasks (id, project_id, name, category, status, required, notes, completed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                [
+                  taskId,
+                  id,
+                  task.name,
+                  task.category || null,
+                  task.status || 'Not Started',
+                  task.required || false,
+                  task.notes || null,
+                  completedAt
+                ]
+              );
+            } else {
+              throw dbError;
+            }
+          }
         }
       }
     }

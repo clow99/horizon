@@ -120,10 +120,21 @@ export default function TableView({ projects, onUpdateProject, onReorderProjects
     return ['all', ...Array.from(cats)];
   }, [projects]);
 
-  // Filter tasks by category
-  const filteredTasks = selectedCategory === 'all' 
-    ? allUniqueTaskNames 
-    : allUniqueTaskNames.filter(t => t.category === selectedCategory);
+  // Filter tasks by category AND ensure they exist in at least one project
+  const filteredTasks = useMemo(() => {
+    // First filter by category
+    const categoryFiltered = selectedCategory === 'all' 
+      ? allUniqueTaskNames 
+      : allUniqueTaskNames.filter(t => t.category === selectedCategory);
+    
+    // Then filter out tasks that don't exist in ANY project
+    // (This ensures rows disappear when all instances are deleted)
+    return categoryFiltered.filter(taskTemplate => {
+      return projects.some(project => 
+        project.tasks.some(task => task.name === taskTemplate.name)
+      );
+    });
+  }, [allUniqueTaskNames, selectedCategory, projects]);
 
   // Group tasks by category if needed
   const groupedTasks = useMemo(() => {
@@ -161,26 +172,22 @@ export default function TableView({ projects, onUpdateProject, onReorderProjects
     setUpdatingTasks(prev => new Set([...prev, taskKey]));
 
     try {
-      // Find the current project from props
-      const project = projects.find(p => p.id === projectId);
-      if (!project) {
-        console.error('Project not found in updateTaskInProject:', projectId);
-        return;
-      }
-      
-      console.log('Found project:', project);
-      console.log('Project tasks:', project.tasks);
-      
-      // Update the specific task
-      const updatedTasks = project.tasks.map(task =>
-        task.name === taskName ? { ...task, ...updates } : task
-      );
-      
-      const updatedProject = { ...project, tasks: updatedTasks };
-      console.log('Created updatedProject:', updatedProject);
-      
-      // Pass the updated project object (not a function)
-      await onUpdateProject(projectId, updatedProject);
+      // Use functional update to get the LATEST project state
+      // This ensures we always work with current data, even after multiple rapid updates
+      await onUpdateProject(projectId, (currentProject) => {
+        console.log('Functional update - current project:', currentProject);
+        console.log('Project tasks:', currentProject.tasks);
+        
+        // Update the specific task
+        const updatedTasks = currentProject.tasks.map(task =>
+          task.name === taskName ? { ...task, ...updates } : task
+        );
+        
+        const updatedProject = { ...currentProject, tasks: updatedTasks };
+        console.log('Created updatedProject:', updatedProject);
+        
+        return updatedProject;
+      });
       
       console.log('onUpdateProject completed successfully');
     } catch (error) {
@@ -248,6 +255,26 @@ export default function TableView({ projects, onUpdateProject, onReorderProjects
         newSet.delete(taskKey);
         return newSet;
       });
+    }
+  };
+
+  // Add task to ALL projects that are missing it
+  const addTaskToAllProjects = async (taskTemplate) => {
+    // Find all projects that don't have this task
+    const projectsMissingTask = projects.filter(project => 
+      !project.tasks.some(task => task.name === taskTemplate.name)
+    );
+
+    if (projectsMissingTask.length === 0) {
+      console.log('All projects already have this task');
+      return;
+    }
+
+    console.log(`Adding "${taskTemplate.name}" to ${projectsMissingTask.length} projects`);
+
+    // Add task to each project sequentially to avoid race conditions
+    for (const project of projectsMissingTask) {
+      await addMissingTask(project.id, taskTemplate);
     }
   };
 
@@ -431,16 +458,27 @@ export default function TableView({ projects, onUpdateProject, onReorderProjects
   const getTaskStats = (taskName) => {
     let total = 0;
     let completed = 0;
+    let blocked = 0;
     
     projects.forEach(project => {
       const task = findTaskInProject(project, taskName);
       if (task) {
         total++;
         if (task.status === 'Completed') completed++;
+        if (task.status === 'Blocked') blocked++;
       }
     });
     
-    return { total, completed, percentage: total > 0 ? (completed / total) * 100 : 0 };
+    // Count completed + blocked as "done" for percentage calculation
+    const done = completed + blocked;
+    
+    return { 
+      total, 
+      completed, 
+      blocked,
+      done,
+      percentage: total > 0 ? (done / total) * 100 : 0 
+    };
   };
 
   // Calculate overall stats
@@ -802,14 +840,34 @@ export default function TableView({ projects, onUpdateProject, onReorderProjects
                       const stats = getTaskStats(taskTemplate.name);
                       const isEvenRow = idx % 2 === 0;
                       
+                      // Check if any projects are missing this task
+                      const projectsMissingTask = projects.filter(project => 
+                        !project.tasks.some(task => task.name === taskTemplate.name)
+                      );
+                      const hasMissingProjects = projectsMissingTask.length > 0;
+                      
                       return (
-                        <tr key={`${taskTemplate.name}-${idx}`} className={`${isEvenRow ? 'bg-white' : 'bg-gray-50'} hover:bg-blue-50`}>
-                          <td className={`px-3 py-2 border-r sticky left-0 ${isEvenRow ? 'bg-white' : 'bg-gray-50'} z-10 hover:bg-blue-50`}>
+                        <tr key={`${taskTemplate.name}-${idx}`} className={`${isEvenRow ? 'bg-white' : 'bg-gray-50'} hover:bg-blue-50 group/row`}>
+                          <td className={`px-3 py-2 border-r sticky left-0 ${isEvenRow ? 'bg-white' : 'bg-gray-50'} z-10 hover:bg-blue-50 relative`}>
                             <div className="text-sm font-semibold text-gray-900">{taskTemplate.name}</div>
                             <div className="text-xs text-gray-600 mt-0.5">{taskTemplate.description}</div>
-                            <span className="inline-block mt-1 text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-700">
-                              {taskTemplate.category}
-                            </span>
+                            <div className="flex items-center gap-2 mt-1">
+                              <span className="inline-block text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-700">
+                                {taskTemplate.category}
+                              </span>
+                              {hasMissingProjects && (
+                                <button
+                                  onClick={() => addTaskToAllProjects(taskTemplate)}
+                                  className="opacity-0 group-hover/row:opacity-100 transition-opacity inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded bg-blue-50 hover:bg-blue-100 text-blue-700 hover:text-blue-900 border border-blue-200 font-medium"
+                                  title={`Add to ${projectsMissingTask.length} project${projectsMissingTask.length !== 1 ? 's' : ''}`}
+                                >
+                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                                  </svg>
+                                  Add to {projectsMissingTask.length}
+                                </button>
+                              )}
+                            </div>
                           </td>
                           
                           {paginatedProjects.map((project) => {
@@ -865,79 +923,93 @@ export default function TableView({ projects, onUpdateProject, onReorderProjects
                                   </div>
                                 ) : (
                                   <>
-                                    <div className="flex items-center justify-center gap-2">
-                                      {/* Custom Styled Checkbox */}
-                                      <label className="flex-shrink-0 cursor-pointer group">
-                                        <div className="relative">
-                                          <input
-                                            type="checkbox"
-                                            checked={task.status === 'Completed'}
-                                            readOnly
-                                            disabled={isUpdating}
-                                            className="sr-only peer"
-                                          />
-                                          <div 
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              if (!isUpdating) {
-                                                const isCompleted = task.status !== 'Completed';
-                                                updateTaskInProject(project.id, task.name, {
-                                                  status: isCompleted ? 'Completed' : 'Not Started',
-                                                  completed_at: isCompleted ? new Date().toISOString() : null
-                                                });
-                                              }
-                                            }}
-                                            className={`w-5 h-5 border-2 rounded flex items-center justify-center transition-all ${
-                                            task.status === 'Completed'
-                                              ? 'bg-blue-600 border-blue-600'
-                                              : 'bg-white border-gray-300 hover:border-blue-500'
-                                          } ${isUpdating ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
-                                            {task.status === 'Completed' && (
-                                              <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                                              </svg>
+                                    <div className="flex flex-col items-center gap-1.5">
+                                      {/* Top row: Checkbox and Status Dropdown */}
+                                      <div className="flex items-center justify-center gap-2 w-full">
+                                        {/* Custom Styled Checkbox */}
+                                        <label className="flex-shrink-0 cursor-pointer group">
+                                          <div className="relative">
+                                            <input
+                                              type="checkbox"
+                                              checked={task.status === 'Completed'}
+                                              readOnly
+                                              disabled={isUpdating || task.status === 'Blocked'}
+                                              className="sr-only peer"
+                                            />
+                                            <div 
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                // Prevent checking/unchecking if blocked or updating
+                                                if (!isUpdating && task.status !== 'Blocked') {
+                                                  const isCompleted = task.status !== 'Completed';
+                                                  updateTaskInProject(project.id, task.name, {
+                                                    status: isCompleted ? 'Completed' : 'Not Started',
+                                                    completed_at: isCompleted ? new Date().toISOString() : null
+                                                  });
+                                                }
+                                              }}
+                                              className={`w-5 h-5 border-2 rounded flex items-center justify-center transition-all ${
+                                              task.status === 'Completed'
+                                                ? 'bg-blue-600 border-blue-600'
+                                                : task.status === 'Blocked'
+                                                ? 'bg-red-100 border-red-300 cursor-not-allowed'
+                                                : 'bg-white border-gray-300 hover:border-blue-500'
+                                            } ${isUpdating ? 'opacity-50 cursor-not-allowed' : task.status === 'Blocked' ? 'cursor-not-allowed' : 'cursor-pointer'}`}
+                                              title={task.status === 'Blocked' ? 'Cannot complete blocked tasks' : ''}
+                                            >
+                                              {task.status === 'Completed' && (
+                                                <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                                </svg>
+                                              )}
+                                              {task.status === 'Blocked' && (
+                                                <svg className="w-3.5 h-3.5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                                </svg>
+                                              )}
+                                            </div>
+                                            {isUpdating && (
+                                              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                                                <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-500 border-t-transparent"></div>
+                                              </div>
                                             )}
                                           </div>
-                                          {isUpdating && (
-                                            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                                              <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-500 border-t-transparent"></div>
-                                            </div>
-                                          )}
-                                        </div>
-                                      </label>
+                                        </label>
 
-                                      {/* Status Dropdown */}
-                                      <select
-                                        value={task.status}
-                                        onChange={(e) => updateTaskInProject(project.id, task.name, {
-                                          status: e.target.value
-                                        })}
-                                        disabled={isUpdating}
-                                        className={`flex-1 min-w-0 px-2 py-1 text-xs rounded border focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all ${
-                                          task.status === 'Completed'
-                                            ? 'bg-green-50 border-green-300 text-green-800 font-medium'
-                                            : task.status === 'In Progress'
-                                            ? 'bg-blue-50 border-blue-300 text-blue-800 font-medium'
-                                            : task.status === 'Blocked'
-                                            ? 'bg-red-50 border-red-300 text-red-800 font-medium'
-                                            : 'bg-gray-50 border-gray-300 text-gray-800'
-                                        } ${isUpdating ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-                                      >
-                                        {statusOptions.map(opt => (
-                                          <option key={opt.value} value={opt.value}>
-                                            {opt.label}
-                                          </option>
-                                        ))}
-                                      </select>
+                                        {/* Status Dropdown */}
+                                        <select
+                                          value={task.status}
+                                          onChange={(e) => updateTaskInProject(project.id, task.name, {
+                                            status: e.target.value
+                                          })}
+                                          disabled={isUpdating}
+                                          className={`flex-1 min-w-0 px-2 py-1 text-xs rounded border focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all ${
+                                            task.status === 'Completed'
+                                              ? 'bg-green-50 border-green-300 text-green-800 font-medium'
+                                              : task.status === 'In Progress'
+                                              ? 'bg-blue-50 border-blue-300 text-blue-800 font-medium'
+                                              : task.status === 'Blocked'
+                                              ? 'bg-red-50 border-red-300 text-red-800 font-medium'
+                                              : 'bg-gray-50 border-gray-300 text-gray-800'
+                                          } ${isUpdating ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                                        >
+                                          {statusOptions.map(opt => (
+                                            <option key={opt.value} value={opt.value}>
+                                              {opt.label}
+                                            </option>
+                                          ))}
+                                        </select>
+                                      </div>
 
-                                      {/* User Profile Picture - Shows who last updated */}
+                                      {/* Bottom row: User Profile Picture - Shows who last updated */}
                                       {task.updated_by_user_image && (
-                                        <div className="flex-shrink-0" title={`Last updated by ${task.updated_by_user_name || 'Unknown'}`}>
+                                        <div className="flex items-center justify-center gap-1.5 text-[10px] text-gray-600" title={`Last updated by ${task.updated_by_user_name || 'Unknown'}`}>
                                           <img 
                                             src={task.updated_by_user_image} 
                                             alt={task.updated_by_user_name || 'User'} 
-                                            className="w-6 h-6 rounded-full border border-gray-300 object-cover"
+                                            className="w-5 h-5 rounded-full border border-gray-300 object-cover"
                                           />
+                                          <span className="truncate max-w-[100px]">{task.updated_by_user_name || 'Unknown'}</span>
                                         </div>
                                       )}
                                     </div>
@@ -958,15 +1030,29 @@ export default function TableView({ projects, onUpdateProject, onReorderProjects
                           })}
                           
                           <td className={`px-2 py-2 text-center border-l sticky right-0 ${isEvenRow ? 'bg-white' : 'bg-gray-50'} z-10 hover:bg-blue-50`}>
-                            <div className={`text-lg font-bold ${
-                              stats.percentage === 100 ? 'text-green-600' :
-                              stats.percentage >= 50 ? 'text-blue-600' :
-                              stats.percentage > 0 ? 'text-yellow-600' :
-                              'text-gray-400'
-                            }`}>
-                              {Math.round(stats.percentage)}%
-                            </div>
-                            <div className="text-[10px] text-gray-600">{stats.completed}/{stats.total}</div>
+                            {stats.total === stats.blocked ? (
+                              // All tasks are blocked - show N/A
+                              <div className="text-lg font-bold text-red-600">N/A</div>
+                            ) : (
+                              // Normal display
+                              <>
+                                <div className={`text-lg font-bold ${
+                                  stats.percentage === 100 ? 'text-green-600' :
+                                  stats.percentage >= 50 ? 'text-blue-600' :
+                                  stats.percentage > 0 ? 'text-yellow-600' :
+                                  'text-gray-400'
+                                }`}>
+                                  {Math.round(stats.percentage)}%
+                                </div>
+                                <div className="text-[10px] flex items-center justify-center gap-0.5">
+                                  <span className="text-green-600 font-semibold">{stats.completed}</span>
+                                  <span className="text-gray-400">/</span>
+                                  <span className={stats.blocked > 0 ? "text-red-600 font-semibold" : "text-gray-600"}>
+                                    {stats.total - stats.blocked}
+                                  </span>
+                                </div>
+                              </>
+                            )}
                           </td>
                         </tr>
                       );

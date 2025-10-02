@@ -8,7 +8,7 @@
  */
 
 const mysql = require('mysql2/promise');
-require('dotenv').config({ path: '.env.local' });
+require('dotenv').config({ path: '.env' });
 
 async function addUpdatedByTracking() {
   let connection;
@@ -16,10 +16,11 @@ async function addUpdatedByTracking() {
   try {
     // Connect to database
     connection = await mysql.createConnection({
-      host: process.env.DB_HOST,
-      user: process.env.DB_USER,
-      password: process.env.DB_PASSWORD,
-      database: process.env.DB_NAME
+      host: process.env.MYSQL_HOST,
+      port: process.env.MYSQL_PORT || 3306,
+      user: process.env.MYSQL_USER,
+      password: process.env.MYSQL_PASSWORD,
+      database: process.env.MYSQL_DATABASE
     });
 
     console.log('✓ Connected to database');
