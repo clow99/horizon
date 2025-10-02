@@ -10,8 +10,7 @@ const statusOptions = [
   { value: 'Blocked', label: 'Blocked', color: 'red' }
 ];
 
-export default function TableView({ projects: initialProjects, onUpdateProject, session }) {
-  const [projects, setProjects] = useState(initialProjects);
+export default function TableView({ projects, onUpdateProject, onReorderProjects, session }) {
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [groupBy, setGroupBy] = useState('task'); // 'task' or 'category'
   const [updatingTasks, setUpdatingTasks] = useState(new Set()); // Track which tasks are updating
@@ -19,29 +18,29 @@ export default function TableView({ projects: initialProjects, onUpdateProject, 
   const [dragOverProjectId, setDragOverProjectId] = useState(null);
   const [isSavingOrder, setIsSavingOrder] = useState(false);
   const [isReordering, setIsReordering] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
+  const [hasManualOrder, setHasManualOrder] = useState(false); // Track if user has manually reordered
+  const [deleteConfirmation, setDeleteConfirmation] = useState(null); // Track which task is being confirmed for deletion: { projectId, taskName }
   const projectRefs = useRef({});
+  const updateQueueRef = useRef(Promise.resolve()); // Queue for local updates
   
-  // Pagination state - Load from localStorage or default to 4
+  // Pagination state - Always default to "All" projects
   const [currentPage, setCurrentPage] = useState(0);
-  const [projectsPerPage, setProjectsPerPage] = useState(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('tableView_projectsPerPage');
-      return saved ? parseInt(saved, 10) : 4;
-    }
-    return 4;
-  });
+  const [projectsPerPage, setProjectsPerPage] = useState(projects.length || 999);
+  const [isClient, setIsClient] = useState(false);
 
-  // Save projectsPerPage to localStorage whenever it changes
+  // Set isClient flag on mount
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('tableView_projectsPerPage', projectsPerPage.toString());
-    }
-  }, [projectsPerPage]);
+    setIsClient(true);
+  }, []);
 
-  // Sync projects when initialProjects changes (from parent updates)
+  // Update projectsPerPage when projects changes (for "All" option)
   useEffect(() => {
-    setProjects(initialProjects);
-  }, [initialProjects]);
+    if (projectsPerPage === projects.length || projectsPerPage >= 999) {
+      // If user had "All" selected, keep it as "All" with new count
+      setProjectsPerPage(projects.length || 999);
+    }
+  }, [projects.length]);
 
   // Calculate pagination
   const totalPages = Math.ceil(projects.length / projectsPerPage);
@@ -56,10 +55,12 @@ export default function TableView({ projects: initialProjects, onUpdateProject, 
     }
   }, [currentPage, totalPages]);
 
-  // Get all unique task names across all projects
+  // Get all unique task names across all projects, maintaining STABLE order
+  // Task order should NOT change when projects are reordered
   const allUniqueTaskNames = useMemo(() => {
     const taskMap = new Map();
     
+    // Collect all unique tasks from all projects
     projects.forEach(project => {
       project.tasks.forEach(task => {
         if (!taskMap.has(task.name)) {
@@ -67,13 +68,45 @@ export default function TableView({ projects: initialProjects, onUpdateProject, 
             name: task.name,
             description: task.description,
             category: task.category,
-            required: task.required
+            required: task.required,
+            // Use the task's database ID for stable sorting if available
+            id: task.id
           });
         }
       });
     });
     
-    return Array.from(taskMap.values());
+    // Define consistent category order for grouping
+    const categoryOrder = {
+      'Infrastructure': 1,
+      'Security': 2,
+      'DevOps': 3,
+      'Testing': 4,
+      'Monitoring': 5,
+      'Deployment': 6,
+      'Marketing': 7,
+      'Legal': 8
+    };
+    
+    // Convert to array and sort by category first, then by name within category
+    // This groups related tasks together and maintains stable order
+    const tasksArray = Array.from(taskMap.values());
+    
+    tasksArray.sort((a, b) => {
+      // Get category order (default to 999 for unknown categories)
+      const catOrderA = categoryOrder[a.category] || 999;
+      const catOrderB = categoryOrder[b.category] || 999;
+      
+      // First, sort by category
+      if (catOrderA !== catOrderB) {
+        return catOrderA - catOrderB;
+      }
+      
+      // Within same category, sort by task name alphabetically
+      return a.name.localeCompare(b.name);
+    });
+    
+    return tasksArray;
   }, [projects]);
 
   // Get all unique categories
@@ -116,38 +149,48 @@ export default function TableView({ projects: initialProjects, onUpdateProject, 
   };
 
   // Update task in project
-  const updateTaskInProject = (projectId, taskName, updates) => {
-    const project = projects.find(p => p.id === projectId);
-    if (!project) return;
-
+  const updateTaskInProject = async (projectId, taskName, updates) => {
+    console.log('updateTaskInProject called:', { projectId, taskName, updates });
+    
     // Create unique key for this task update
     const taskKey = `${projectId}-${taskName}`;
     
     // Add to updating set for visual feedback
     setUpdatingTasks(prev => new Set([...prev, taskKey]));
 
-    const updatedTasks = project.tasks.map(task =>
-      task.name === taskName ? { ...task, ...updates } : task
-    );
-
-    const updatedProject = { ...project, tasks: updatedTasks };
-
-    // Update local state immediately for responsive UI
-    setProjects(prevProjects =>
-      prevProjects.map(p => p.id === projectId ? updatedProject : p)
-    );
-
-    // Call parent update (optimistic update happens in parent too)
-    onUpdateProject(projectId, updatedProject);
-    
-    // Remove from updating set after a short delay (optimistic - assume success)
-    setTimeout(() => {
+    try {
+      // Find the current project from props
+      const project = projects.find(p => p.id === projectId);
+      if (!project) {
+        console.error('Project not found in updateTaskInProject:', projectId);
+        return;
+      }
+      
+      console.log('Found project:', project);
+      console.log('Project tasks:', project.tasks);
+      
+      // Update the specific task
+      const updatedTasks = project.tasks.map(task =>
+        task.name === taskName ? { ...task, ...updates } : task
+      );
+      
+      const updatedProject = { ...project, tasks: updatedTasks };
+      console.log('Created updatedProject:', updatedProject);
+      
+      // Pass the updated project object (not a function)
+      await onUpdateProject(projectId, updatedProject);
+      
+      console.log('onUpdateProject completed successfully');
+    } catch (error) {
+      console.error('Error updating task:', error);
+    } finally {
+      // Remove from updating set after update completes
       setUpdatingTasks(prev => {
         const newSet = new Set(prev);
         newSet.delete(taskKey);
         return newSet;
       });
-    }, 300);
+    }
   };
 
   // Add missing task to a project
@@ -173,22 +216,63 @@ export default function TableView({ projects: initialProjects, onUpdateProject, 
     const updatedTasks = [...project.tasks, newTask];
     const updatedProject = { ...project, tasks: updatedTasks };
 
-    // Update local state immediately
-    setProjects(prevProjects =>
-      prevProjects.map(p => p.id === projectId ? updatedProject : p)
-    );
-
-    // Call parent update
-    onUpdateProject(projectId, updatedProject);
-
-    // Remove from updating set
-    setTimeout(() => {
+    // Call parent update (parent handles state)
+    try {
+      await onUpdateProject(projectId, updatedProject);
+    } catch (error) {
+      console.error('Error adding task:', error);
+    } finally {
+      // Remove from updating set
       setUpdatingTasks(prev => {
         const newSet = new Set(prev);
         newSet.delete(taskKey);
         return newSet;
       });
-    }, 300);
+    }
+  };
+
+  // Remove task from a specific project
+  const initiateTaskRemoval = (projectId, taskName) => {
+    // Set the confirmation state to show inline confirm/cancel buttons
+    setDeleteConfirmation({ projectId, taskName });
+  };
+
+  const confirmTaskRemoval = async () => {
+    if (!deleteConfirmation) return;
+
+    const { projectId, taskName } = deleteConfirmation;
+    const project = projects.find(p => p.id === projectId);
+    if (!project) {
+      setDeleteConfirmation(null);
+      return;
+    }
+
+    const taskKey = `${projectId}-${taskName}`;
+    setUpdatingTasks(prev => new Set([...prev, taskKey]));
+
+    // Filter out the task
+    const updatedTasks = project.tasks.filter(task => task.name !== taskName);
+    const updatedProject = { ...project, tasks: updatedTasks };
+
+    // Call parent update (parent handles state)
+    try {
+      await onUpdateProject(projectId, updatedProject);
+    } catch (error) {
+      console.error('Error removing task:', error);
+    } finally {
+      // Remove from updating set
+      setUpdatingTasks(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(taskKey);
+        return newSet;
+      });
+      // Clear confirmation state
+      setDeleteConfirmation(null);
+    }
+  };
+
+  const cancelTaskRemoval = () => {
+    setDeleteConfirmation(null);
   };
 
   // Drag and drop handlers for reordering projects
@@ -245,7 +329,11 @@ export default function TableView({ projects: initialProjects, onUpdateProject, 
     const [removed] = newProjects.splice(draggedIndex, 1);
     newProjects.splice(targetIndex, 0, removed);
 
-    setProjects(newProjects);
+    // Call parent to update the projects order
+    if (onReorderProjects) {
+      onReorderProjects(newProjects);
+    }
+    
     setIsReordering(true);
 
     // Use requestAnimationFrame to ensure DOM has updated
@@ -297,6 +385,7 @@ export default function TableView({ projects: initialProjects, onUpdateProject, 
 
   const saveProjectOrder = async (projectIds) => {
     setIsSavingOrder(true);
+    setHasManualOrder(true); // Mark that user has manually reordered
     try {
       const response = await fetch('/api/projects/order', {
         method: 'PUT',
@@ -376,244 +465,248 @@ export default function TableView({ projects: initialProjects, onUpdateProject, 
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
-      {/* Consistent Header */}
-      <header className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-50">
-        <div className="mx-auto px-6 py-3">
+    <div className="min-h-screen bg-gray-50">
+      {/* Simplified Header */}
+      <header className="bg-white border-b sticky top-0 z-50">
+        <div className="mx-auto px-6 py-2.5">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <h1 className="text-xl font-bold text-gray-900">Production Deployment Tracker</h1>
+            <div className="flex items-center gap-3">
+              <h1 className="text-lg font-bold text-gray-900">Deployment Tracker</h1>
               <nav className="flex gap-1">
                 <Link 
                   href="/dashboard" 
-                  className="px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
+                  className="px-2.5 py-1 text-sm text-gray-700 hover:bg-gray-100 rounded transition-colors"
                 >
                   Dashboard
                 </Link>
                 <Link 
                   href="/table" 
-                  className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-md"
+                  className="px-2.5 py-1 text-sm text-white bg-blue-600 rounded"
                 >
-                  Table View
+                  Table
                 </Link>
               </nav>
             </div>
 
-            <div className="flex items-center gap-3">
-              {session?.user && (
-                <div className="flex items-center gap-2">
-                  {session.user.image && (
-                    <img 
-                      src={session.user.image} 
-                      alt={session.user.name} 
-                      className="w-8 h-8 rounded-full border-2 border-gray-200"
-                    />
-                  )}
-                  <span className="text-sm font-medium text-gray-700">{session.user.name}</span>
-                </div>
-              )}
-              <button
-                onClick={() => signOut({ callbackUrl: '/' })}
-                className="px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
-              >
-                Sign Out
-              </button>
+            <div className="flex items-center gap-6">
+              {/* Compact Stats */}
+              <div className="flex items-center gap-3 text-sm">
+                <span className="text-gray-600">{projects.length} projects</span>
+                <span className="text-gray-300">•</span>
+                <span className="font-semibold text-green-600">{overallStats.percentage}% complete</span>
+                {isSavingOrder && (
+                  <>
+                    <span className="text-gray-300">•</span>
+                    <span className="flex items-center gap-1.5 text-blue-600">
+                      <svg className="animate-spin h-3.5 w-3.5" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Saving...
+                    </span>
+                  </>
+                )}
+              </div>
+
+              {/* Pagination Controls */}
+              <div className="flex items-center gap-2">
+                <select
+                  value={projectsPerPage}
+                  onChange={(e) => {
+                    setProjectsPerPage(Number(e.target.value));
+                    setCurrentPage(0);
+                  }}
+                  className="text-xs text-gray-900 bg-white border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                >
+                  <option value="2">2</option>
+                  <option value="4">4</option>
+                  <option value="6">6</option>
+                  <option value="8">8</option>
+                  <option value={projects.length}>All</option>
+                </select>
+                
+                {totalPages > 1 && (
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => setCurrentPage(Math.max(0, currentPage - 1))}
+                      disabled={currentPage === 0}
+                      className="p-1 rounded bg-white border border-gray-300 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <svg className="w-4 h-4 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                      </svg>
+                    </button>
+                    <span className="text-xs text-gray-600 px-2">
+                      {currentPage + 1}/{totalPages}
+                    </span>
+                    <button
+                      onClick={() => setCurrentPage(Math.min(totalPages - 1, currentPage + 1))}
+                      disabled={currentPage >= totalPages - 1}
+                      className="p-1 rounded bg-white border border-gray-300 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <svg className="w-4 h-4 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* User Menu */}
+              <div className="flex items-center gap-2">
+                {session?.user?.image && (
+                  <img 
+                    src={session.user.image} 
+                    alt={session.user.name} 
+                    className="w-7 h-7 rounded-full"
+                  />
+                )}
+                <button
+                  onClick={() => signOut({ callbackUrl: '/' })}
+                  className="text-sm text-gray-600 hover:text-gray-900"
+                >
+                  Sign Out
+                </button>
+              </div>
             </div>
+          </div>
+
+          {/* Enhanced Filters Section */}
+          <div className="mt-2 pt-2 border-t">
+            <button
+              onClick={() => setShowFilters(!showFilters)}
+              className="flex items-center gap-2 text-sm font-medium text-gray-700 hover:text-gray-900 mb-2 group"
+            >
+              <div className={`p-1 rounded-lg bg-gray-100 group-hover:bg-gray-200 transition-colors ${showFilters ? 'bg-blue-100' : ''}`}>
+                <svg className={`w-3.5 h-3.5 transition-transform ${showFilters ? 'rotate-90 text-blue-600' : 'text-gray-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
+                </svg>
+              </div>
+              <span>Filter & Group</span>
+              {(selectedCategory !== 'all' || groupBy === 'category') && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-xs font-semibold">
+                  {selectedCategory !== 'all' && selectedCategory}
+                  {selectedCategory !== 'all' && groupBy === 'category' && ' • '}
+                  {groupBy === 'category' && 'Grouped'}
+                </span>
+              )}
+            </button>
+            
+            {showFilters && (
+              <div className="space-y-3 pb-3">
+                {/* Category Filter - Primary Action */}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1.5 uppercase tracking-wide">
+                    Filter by Category
+                  </label>
+                  <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+                    {categories.map(category => {
+                      const count = category === 'all' 
+                        ? allUniqueTaskNames.length 
+                        : allUniqueTaskNames.filter(t => t.category === category).length;
+                      const isActive = selectedCategory === category;
+                      
+                      return (
+                        <button
+                          key={category}
+                          onClick={() => setSelectedCategory(category)}
+                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
+                            isActive
+                              ? 'bg-blue-600 text-white shadow-md ring-2 ring-blue-200 scale-105'
+                              : 'bg-white text-gray-700 border-2 border-gray-200 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700'
+                          }`}
+                        >
+                          <span>{category === 'all' ? '✦ All Tasks' : category}</span>
+                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                            isActive 
+                              ? 'bg-blue-500 text-white' 
+                              : 'bg-gray-100 text-gray-600'
+                          }`}>
+                            {count}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Grouping Toggle - Secondary Action */}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1.5 uppercase tracking-wide">
+                    Display Mode
+                  </label>
+                  <div className="inline-flex items-center bg-gray-100 rounded-lg p-1 gap-1">
+                    <button
+                      onClick={() => setGroupBy('task')}
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                        groupBy === 'task'
+                          ? 'bg-white text-gray-900 shadow-sm'
+                          : 'text-gray-600 hover:text-gray-900'
+                      }`}
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                      </svg>
+                      <span>List View</span>
+                    </button>
+                    <button
+                      onClick={() => setGroupBy('category')}
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                        groupBy === 'category'
+                          ? 'bg-white text-gray-900 shadow-sm'
+                          : 'text-gray-600 hover:text-gray-900'
+                      }`}
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                      </svg>
+                      <span>Group by Category</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </header>
 
-      {/* Filters and Controls */}
-      <div className="mx-auto px-6 py-3 bg-white border-b border-gray-200">
-        <div className="flex items-center justify-between mb-3">
-          {/* Stats */}
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-3 bg-gray-50 rounded-lg px-3 py-1.5 border border-gray-200">
-              <div className="text-center">
-                <div className="text-xl font-bold text-blue-600">{projects.length}</div>
-                <div className="text-xs text-gray-600">Projects</div>
-              </div>
-              <div className="w-px h-6 bg-gray-300"></div>
-              <div className="text-center">
-                <div className="text-xl font-bold text-green-600">{overallStats.percentage}%</div>
-                <div className="text-xs text-gray-600">Complete</div>
-              </div>
-              <div className="w-px h-6 bg-gray-300"></div>
-              <div className="text-center">
-                <div className="text-xl font-bold text-indigo-600">{overallStats.completed}/{overallStats.total}</div>
-                <div className="text-xs text-gray-600">Tasks</div>
-              </div>
-            </div>
-            
-            {/* Saving indicator */}
-            {isSavingOrder && (
-              <div className="flex items-center gap-2 text-sm text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg">
-                <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                Saving order...
-              </div>
-            )}
-          </div>
-
-          {/* Pagination Controls */}
-          <div className="flex items-center gap-3">
-            {/* Projects per page selector */}
-            <div className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-1.5 border border-gray-200">
-              <span className="text-xs font-medium text-gray-600">Show:</span>
-              <select
-                value={projectsPerPage}
-                onChange={(e) => {
-                  setProjectsPerPage(Number(e.target.value));
-                  setCurrentPage(0); // Reset to first page
-                }}
-                className="text-xs font-medium text-gray-900 bg-white border border-gray-300 rounded px-2 py-0.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="2" className="text-gray-900">2</option>
-                <option value="3" className="text-gray-900">3</option>
-                <option value="4" className="text-gray-900">4</option>
-                <option value="6" className="text-gray-900">6</option>
-                <option value="8" className="text-gray-900">8</option>
-                <option value={projects.length} className="text-gray-900">All</option>
-              </select>
-              <span className="text-xs text-gray-600">projects</span>
-            </div>
-
-            {/* Page navigation */}
-            {totalPages > 1 && (
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setCurrentPage(Math.max(0, currentPage - 1))}
-                  disabled={currentPage === 0}
-                  className="p-1.5 rounded-lg border border-gray-300 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                  title="Previous page"
-                >
-                  <svg className="w-4 h-4 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                  </svg>
-                </button>
-
-                <div className="flex items-center gap-1 bg-gray-50 rounded-lg px-2 py-1 border border-gray-200">
-                  <span className="text-xs font-medium text-gray-700">
-                    Page {currentPage + 1} of {totalPages}
-                  </span>
-                  <span className="text-xs text-gray-500">
-                    ({startIndex + 1}-{Math.min(endIndex, projects.length)} of {projects.length})
-                  </span>
-                </div>
-
-                <button
-                  onClick={() => setCurrentPage(Math.min(totalPages - 1, currentPage + 1))}
-                  disabled={currentPage >= totalPages - 1}
-                  className="p-1.5 rounded-lg border border-gray-300 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                  title="Next page"
-                >
-                  <svg className="w-4 h-4 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Filters */}
-        <div className="flex items-center gap-3">
-          {/* Group By Toggle */}
-          <div className="flex items-center gap-1.5 bg-gray-100 rounded-lg p-1">
-            <button
-              onClick={() => setGroupBy('task')}
-              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                groupBy === 'task'
-                  ? 'bg-white text-gray-900 shadow-sm'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              By Task
-            </button>
-            <button
-              onClick={() => setGroupBy('category')}
-              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                groupBy === 'category'
-                  ? 'bg-white text-gray-900 shadow-sm'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              By Category
-            </button>
-          </div>
-
-          {/* Category Filter */}
-          <div className="flex items-center gap-1.5 overflow-x-auto">
-            {categories.map(category => {
-              const count = category === 'all' 
-                ? allUniqueTaskNames.length 
-                : allUniqueTaskNames.filter(t => t.category === category).length;
-              
-              return (
-                <button
-                  key={category}
-                  onClick={() => setSelectedCategory(category)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap ${
-                    selectedCategory === category
-                      ? 'bg-slate-900 text-white shadow-md'
-                      : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
-                  }`}
-                >
-                  {category === 'all' ? 'All' : category} ({count})
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-
-      {/* Table Container */}
-      <div className="mx-auto p-4">
-        <div className="bg-white rounded-xl shadow-lg border-2 border-gray-300 overflow-hidden">
+      {/* Simplified Table */}
+      <div className="mx-auto p-3">
+        <div className="bg-white rounded-lg shadow border overflow-hidden">
           {groupedTasks.map((group, groupIdx) => (
             <div key={group.category}>
               {groupBy === 'category' && (
-                <div className="bg-gradient-to-r from-indigo-600 to-purple-600 px-4 py-3 border-b-2 border-indigo-700">
-                  <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
-                    </svg>
-                    {group.category}
-                  </h2>
+                <div className="bg-indigo-600 px-3 py-2 border-b">
+                  <h2 className="text-sm font-bold text-white">{group.category}</h2>
                 </div>
               )}
               
-              <div className="overflow-x-auto overflow-y-visible">
-                <table className="w-full border-collapse">
+              <div className="overflow-x-auto">
+                <table className="w-full">
                   <thead>
-                    {/* Project Headers - More Prominent */}
-                    <tr className="bg-gradient-to-r from-slate-800 to-slate-900 border-b-4 border-slate-600">
-                      <th className="px-4 py-3 text-left text-xs font-bold text-white border-b-2 border-slate-700 w-96 sticky left-0 bg-slate-800 z-30">
-                        <div className="flex items-center gap-2">
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                          </svg>
-                          Task Details
-                        </div>
+                    <tr className="bg-gray-800 border-b">
+                      <th className="px-3 py-2 text-left text-xs font-semibold text-white w-80 sticky left-0 bg-gray-800 z-10">
+                        Task
                       </th>
                       {paginatedProjects.map((project, idx) => {
-                        const globalIdx = startIndex + idx; // Calculate global index
+                        const globalIdx = startIndex + idx;
                         const isDragging = draggedProjectId === project.id;
                         const isDragOver = dragOverProjectId === project.id;
+                        const completedCount = project.tasks.filter(t => t.status === 'Completed').length;
+                        const totalCount = project.tasks.length;
+                        
                         return (
                         <th 
                           key={project.id}
                           ref={(el) => projectRefs.current[project.id] = el}
-                          className={`px-3 py-3 text-center border-b-2 border-slate-700 min-w-[200px] max-w-[200px] cursor-move transition-all ${
+                          className={`px-3 py-3 text-center min-w-[180px] max-w-[180px] cursor-grab active:cursor-grabbing transition-all bg-gray-800 border-r border-gray-700 relative ${
                             isReordering ? 'duration-300 ease-out' : 'duration-200'
                           } ${
                             isDragging 
-                              ? 'opacity-40 scale-95' 
+                              ? 'opacity-50 scale-95 shadow-2xl z-50' 
                               : isDragOver 
-                              ? 'scale-105 bg-slate-700 shadow-2xl ring-4 ring-blue-400 ring-opacity-50' 
-                              : 'hover:bg-slate-750'
+                              ? 'bg-blue-600 ring-4 ring-blue-400 ring-opacity-50 scale-105 shadow-2xl' 
+                              : 'hover:bg-gray-700'
                           }`}
                           draggable
                           onDragStart={(e) => handleDragStart(e, project.id)}
@@ -622,217 +715,215 @@ export default function TableView({ projects: initialProjects, onUpdateProject, 
                           onDrop={(e) => handleDrop(e, project.id)}
                           onDragEnd={handleDragEnd}
                         >
-                          <div className="flex flex-col items-center gap-1.5">
-                            {/* Drag Handle Icon */}
-                            <div className={`transition-all cursor-move mb-1 p-1 rounded ${
-                              isDragging 
-                                ? 'bg-blue-500 text-white scale-110' 
-                                : isDragOver 
-                                ? 'bg-blue-400 text-white scale-110 animate-pulse' 
-                                : 'text-slate-400 hover:text-white hover:bg-slate-600'
-                            }`}>
-                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 8h16M4 16h16" />
-                              </svg>
-                            </div>
-                            {/* Project Number Badge */}
-                            <div className={`w-8 h-8 rounded-full bg-white text-slate-900 font-bold text-base flex items-center justify-center shadow-lg transition-all ${
-                              isDragging ? 'scale-90' : isDragOver ? 'scale-110 ring-4 ring-blue-400' : ''
-                            }`}>
-                              {globalIdx + 1}
-                            </div>
+                          {/* Drag indicator - Always visible on hover */}
+                          <div className={`absolute top-1 left-1/2 -translate-x-1/2 transition-all ${
+                            isDragging 
+                              ? 'opacity-0' 
+                              : isDragOver 
+                              ? 'opacity-100 scale-125' 
+                              : 'opacity-40 group-hover:opacity-100'
+                          }`}>
+                            <svg className={`w-5 h-5 ${isDragOver ? 'text-white' : 'text-gray-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M8 9h8M8 15h8" />
+                            </svg>
+                          </div>
+
+                          {/* Drop zone indicators */}
+                          {isDragOver && (
+                            <>
+                              <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-400 animate-pulse"></div>
+                              <div className="absolute right-0 top-0 bottom-0 w-1 bg-blue-400 animate-pulse"></div>
+                            </>
+                          )}
+
+                          <div className="flex flex-col items-center gap-1.5 relative z-10">
                             {/* Project Name */}
-                            <div className="text-white font-bold text-xs leading-tight px-2 text-center line-clamp-2" title={project.name}>
+                            <div className={`text-white text-sm font-semibold px-2 text-center line-clamp-2 transition-all ${
+                              isDragOver ? 'scale-105 text-white' : ''
+                            }`} title={project.name}>
                               {project.name}
                             </div>
-                            {/* Project URL */}
-                            <div className="text-slate-300 text-xs truncate max-w-full px-2" title={project.url}>
-                              {project.url}
-                            </div>
-                            {/* Project Progress */}
+                            
+                            {/* Progress Indicator */}
                             <div className="w-full px-2">
-                              <div className="bg-slate-700 rounded-full h-1.5">
-                                <div
-                                  className="bg-gradient-to-r from-green-400 to-emerald-500 h-1.5 rounded-full transition-all"
-                                  style={{ 
-                                    width: `${project.tasks.length > 0 
-                                      ? (project.tasks.filter(t => t.status === 'Completed').length / project.tasks.length) * 100 
-                                      : 0}%` 
-                                  }}
-                                />
+                              <div className="flex items-center justify-between text-[10px] text-gray-300 mb-1">
+                                <span>{completedCount}/{totalCount}</span>
+                                <span className="font-medium">
+                                  {totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0}%
+                                </span>
                               </div>
-                              <div className="text-xs text-slate-300 mt-0.5">
-                                {project.tasks.filter(t => t.status === 'Completed').length}/{project.tasks.length} tasks
+                              <div className="w-full bg-gray-700 rounded-full h-1.5 overflow-hidden">
+                                <div
+                                  className={`h-1.5 rounded-full transition-all duration-500 ${
+                                    completedCount === totalCount && totalCount > 0
+                                      ? 'bg-gradient-to-r from-green-400 to-emerald-500'
+                                      : completedCount > 0
+                                      ? 'bg-gradient-to-r from-blue-400 to-blue-600'
+                                      : 'bg-gray-600'
+                                  }`}
+                                  style={{ width: `${totalCount > 0 ? (completedCount / totalCount) * 100 : 0}%` }}
+                                />
                               </div>
                             </div>
                           </div>
                         </th>
                       );
                       })}
-                      <th className="px-3 py-3 text-center border-b-2 border-slate-700 w-32 sticky right-0 bg-slate-800 z-30">
-                        <div className="text-white font-bold text-xs">
-                          <div className="flex items-center justify-center gap-1.5">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                            </svg>
-                            Progress
-                          </div>
-                        </div>
+                      <th className="px-2 py-2 text-center w-24 sticky right-0 bg-gray-800 z-10 text-white text-xs font-semibold border-l border-gray-700">
+                        Total
                       </th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-200">
+                  <tbody className="divide-y">
                     {group.tasks.map((taskTemplate, idx) => {
                       const stats = getTaskStats(taskTemplate.name);
                       const isEvenRow = idx % 2 === 0;
                       
                       return (
-                        <tr key={`${taskTemplate.name}-${idx}`} className={`${isEvenRow ? 'bg-white' : 'bg-gray-50'} hover:bg-blue-50 transition-colors`}>
-                          <td className={`px-4 py-3 border-r-2 border-gray-300 sticky left-0 ${isEvenRow ? 'bg-white' : 'bg-gray-50'} z-20 hover:bg-blue-50`}>
-                            <div className="flex items-start gap-2">
-                              {/* Task Number */}
-                              <div className="flex-shrink-0 w-7 h-7 rounded-full bg-slate-100 text-slate-700 font-bold text-xs flex items-center justify-center border-2 border-slate-300">
-                                {idx + 1}
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="font-bold text-gray-900 mb-0.5 flex items-center gap-1.5 text-sm">
-                                  {taskTemplate.name}
-                                </div>
-                                <p className="text-xs text-gray-600 mb-1.5 leading-snug">{taskTemplate.description}</p>
-                                <div className="flex items-center gap-1.5">
-                                  <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-medium border border-slate-300">
-                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
-                                    </svg>
-                                    {taskTemplate.category}
-                                  </span>
-                                </div>
-                              </div>
-                            </div>
+                        <tr key={`${taskTemplate.name}-${idx}`} className={`${isEvenRow ? 'bg-white' : 'bg-gray-50'} hover:bg-blue-50`}>
+                          <td className={`px-3 py-2 border-r sticky left-0 ${isEvenRow ? 'bg-white' : 'bg-gray-50'} z-10 hover:bg-blue-50`}>
+                            <div className="text-sm font-semibold text-gray-900">{taskTemplate.name}</div>
+                            <div className="text-xs text-gray-600 mt-0.5">{taskTemplate.description}</div>
+                            <span className="inline-block mt-1 text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-700">
+                              {taskTemplate.category}
+                            </span>
                           </td>
                           
-                          {paginatedProjects.map((project, projectIdx) => {
+                          {paginatedProjects.map((project) => {
                             const task = findTaskInProject(project, taskTemplate.name);
                             const taskKey = `${project.id}-${taskTemplate.name}`;
                             const isUpdating = updatingTasks.has(taskKey);
+                            const isConfirmingDelete = deleteConfirmation?.projectId === project.id && deleteConfirmation?.taskName === taskTemplate.name;
                             
                             if (!task) {
                               return (
-                                <td key={project.id} className="px-3 py-3 text-center border-r border-gray-200">
+                                <td key={project.id} className="px-2 py-2 text-center border-r">
                                   <button
                                     onClick={() => addMissingTask(project.id, taskTemplate)}
                                     disabled={isUpdating}
-                                    className={`px-3 py-1.5 text-xs text-gray-500 hover:text-blue-600 bg-gray-50 hover:bg-blue-50 border border-gray-200 hover:border-blue-300 rounded transition-all ${
-                                      isUpdating ? 'opacity-50 cursor-not-allowed' : ''
-                                    }`}
-                                    title="Add this task to the project"
+                                    className="text-xs text-gray-400 hover:text-blue-600 disabled:opacity-50"
                                   >
-                                    {isUpdating ? 'adding...' : 'add task +'}
+                                    + add
                                   </button>
                                 </td>
                               );
                             }
                             
                             return (
-                              <td key={project.id} className="px-3 py-3 border-r border-gray-200">
-                                <div className="flex flex-col items-center gap-2">
-                                  {/* Completion Status Card */}
-                                  <div className={`w-full rounded-lg border-2 p-2 transition-all relative ${
-                                    task.status === 'Completed'
-                                      ? 'bg-green-50 border-green-400 shadow-sm'
-                                      : 'bg-white border-gray-300 hover:border-gray-400'
-                                  } ${isUpdating ? 'opacity-60' : ''}`}>
-                                    {/* Checkbox with Label */}
-                                    <label className="flex items-center gap-2 cursor-pointer group">
-                                      <div className="relative flex items-center justify-center w-5 h-5">
-                                        <input
-                                          type="checkbox"
-                                          checked={task.status === 'Completed'}
-                                          onChange={(e) => updateTaskInProject(project.id, task.name, {
-                                            status: e.target.checked ? 'Completed' : 'Not Started'
-                                          })}
-                                          disabled={isUpdating}
-                                          className="w-5 h-5 text-blue-600 rounded-lg focus:ring-2 focus:ring-blue-500 cursor-pointer border-2 border-gray-400 disabled:cursor-not-allowed accent-blue-600"
-                                        />
-                                        {isUpdating && (
-                                          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                                            <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-500 border-t-transparent"></div>
-                                          </div>
-                                        )}
-                                      </div>
-                                      <span className={`text-xs font-semibold ${
-                                        task.status === 'Completed' ? 'text-green-700' : 'text-gray-700'
-                                      }`}>
-                                        {isUpdating ? 'Updating...' : task.status === 'Completed' ? 'Completed' : 'Mark Complete'}
-                                      </span>
-                                    </label>
-                                  </div>
-
-                                  {/* Status Selector */}
-                                  <div className="w-full">
-                                    <label className="block text-xs font-semibold text-gray-600 mb-1 text-left">
-                                      Status
-                                    </label>
-                                    <select
-                                      value={task.status}
-                                      onChange={(e) => updateTaskInProject(project.id, task.name, {
-                                        status: e.target.value
-                                      })}
+                              <td key={project.id} className="px-2 py-2 border-r group relative">
+                                {isConfirmingDelete ? (
+                                  // Show confirmation buttons (replace entire cell)
+                                  <div className="flex gap-1.5 justify-center">
+                                    <button
+                                      onClick={cancelTaskRemoval}
                                       disabled={isUpdating}
-                                      className={`w-full px-2.5 py-1.5 rounded-lg border-2 text-xs font-bold transition-all focus:outline-none focus:ring-2 focus:ring-offset-1 disabled:opacity-60 disabled:cursor-not-allowed ${
-                                        task.status === 'Completed'
-                                          ? 'bg-green-100 border-green-400 text-green-800 focus:ring-green-500'
-                                          : task.status === 'In Progress'
-                                          ? 'bg-blue-100 border-blue-400 text-blue-800 focus:ring-blue-500'
-                                          : task.status === 'Blocked'
-                                          ? 'bg-indigo-100 border-indigo-400 text-indigo-800 focus:ring-indigo-500'
-                                          : 'bg-gray-100 border-gray-400 text-gray-800 focus:ring-gray-500'
-                                      }`}
+                                      className="flex-1 px-3 py-1.5 text-xs font-semibold bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-300 rounded-md shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                      title="Cancel"
                                     >
-                                      {statusOptions.map(opt => (
-                                        <option key={opt.value} value={opt.value}>
-                                          {opt.label}
-                                        </option>
-                                      ))}
-                                    </select>
+                                      ✕ Cancel
+                                    </button>
+                                    <button
+                                      onClick={confirmTaskRemoval}
+                                      disabled={isUpdating}
+                                      className="flex-1 px-3 py-1.5 text-xs font-semibold bg-red-500 hover:bg-red-600 text-white rounded-md shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                      title="Confirm removal"
+                                    >
+                                      ✓ Remove
+                                    </button>
                                   </div>
-                                </div>
+                                ) : (
+                                  <>
+                                    <div className="flex items-center justify-center gap-2">
+                                      {/* Custom Styled Checkbox */}
+                                      <label className="flex-shrink-0 cursor-pointer group">
+                                        <div className="relative">
+                                          <input
+                                            type="checkbox"
+                                            checked={task.status === 'Completed'}
+                                            readOnly
+                                            disabled={isUpdating}
+                                            className="sr-only peer"
+                                          />
+                                          <div 
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              if (!isUpdating) {
+                                                const isCompleted = task.status !== 'Completed';
+                                                updateTaskInProject(project.id, task.name, {
+                                                  status: isCompleted ? 'Completed' : 'Not Started',
+                                                  completed_at: isCompleted ? new Date().toISOString() : null
+                                                });
+                                              }
+                                            }}
+                                            className={`w-5 h-5 border-2 rounded flex items-center justify-center transition-all ${
+                                            task.status === 'Completed'
+                                              ? 'bg-blue-600 border-blue-600'
+                                              : 'bg-white border-gray-300 hover:border-blue-500'
+                                          } ${isUpdating ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
+                                            {task.status === 'Completed' && (
+                                              <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                              </svg>
+                                            )}
+                                          </div>
+                                          {isUpdating && (
+                                            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                                              <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-500 border-t-transparent"></div>
+                                            </div>
+                                          )}
+                                        </div>
+                                      </label>
+
+                                      {/* Status Dropdown */}
+                                      <select
+                                        value={task.status}
+                                        onChange={(e) => updateTaskInProject(project.id, task.name, {
+                                          status: e.target.value
+                                        })}
+                                        disabled={isUpdating}
+                                        className={`flex-1 min-w-0 px-2 py-1 text-xs rounded border focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all ${
+                                          task.status === 'Completed'
+                                            ? 'bg-green-50 border-green-300 text-green-800 font-medium'
+                                            : task.status === 'In Progress'
+                                            ? 'bg-blue-50 border-blue-300 text-blue-800 font-medium'
+                                            : task.status === 'Blocked'
+                                            ? 'bg-red-50 border-red-300 text-red-800 font-medium'
+                                            : 'bg-gray-50 border-gray-300 text-gray-800'
+                                        } ${isUpdating ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                                      >
+                                        {statusOptions.map(opt => (
+                                          <option key={opt.value} value={opt.value}>
+                                            {opt.label}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </div>
+
+                                    {/* Delete Button - Shows on hover */}
+                                    <button
+                                      onClick={() => initiateTaskRemoval(project.id, task.name)}
+                                      disabled={isUpdating}
+                                      className="absolute top-0.5 right-0.5 opacity-0 group-hover:opacity-100 transition-opacity px-1 py-0.5 text-[9px] rounded bg-red-50 hover:bg-red-100 text-red-600 hover:text-red-700 disabled:opacity-30"
+                                      title="Remove this task from this project"
+                                    >
+                                      ✕
+                                    </button>
+                                  </>
+                                )}
                               </td>
                             );
                           })}
                           
-                          <td className={`px-3 py-3 text-center border-l-2 border-gray-300 sticky right-0 ${isEvenRow ? 'bg-white' : 'bg-gray-50'} z-20 hover:bg-blue-50`}>
-                            <div className="flex flex-col items-center gap-1.5">
-                              <div className={`text-2xl font-bold ${
-                                stats.percentage === 100 ? 'text-green-600' :
-                                stats.percentage >= 50 ? 'text-blue-600' :
-                                stats.percentage > 0 ? 'text-yellow-600' :
-                                'text-gray-400'
-                              }`}>
-                                {Math.round(stats.percentage)}%
-                              </div>
-                              <div className="text-xs font-semibold text-gray-600">
-                                {stats.completed} of {stats.total}
-                              </div>
-                              <div className="w-20 bg-gray-200 rounded-full h-2.5 mt-0.5 overflow-hidden border border-gray-300">
-                                <div
-                                  className={`h-2.5 rounded-full transition-all ${
-                                    stats.percentage === 100 ? 'bg-gradient-to-r from-green-500 to-emerald-600' :
-                                    stats.percentage >= 50 ? 'bg-gradient-to-r from-blue-500 to-indigo-600' :
-                                    stats.percentage > 0 ? 'bg-gradient-to-r from-yellow-500 to-orange-600' :
-                                    'bg-gray-300'
-                                  }`}
-                                  style={{ width: `${stats.percentage}%` }}
-                                />
-                              </div>
-                              {stats.percentage === 100 && (
-                                <div className="mt-0.5">
-                                  <svg className="w-5 h-5 text-green-600" fill="currentColor" viewBox="0 0 24 24">
-                                    <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
-                                  </svg>
-                                </div>
-                              )}
+                          <td className={`px-2 py-2 text-center border-l sticky right-0 ${isEvenRow ? 'bg-white' : 'bg-gray-50'} z-10 hover:bg-blue-50`}>
+                            <div className={`text-lg font-bold ${
+                              stats.percentage === 100 ? 'text-green-600' :
+                              stats.percentage >= 50 ? 'text-blue-600' :
+                              stats.percentage > 0 ? 'text-yellow-600' :
+                              'text-gray-400'
+                            }`}>
+                              {Math.round(stats.percentage)}%
                             </div>
+                            <div className="text-[10px] text-gray-600">{stats.completed}/{stats.total}</div>
                           </td>
                         </tr>
                       );
