@@ -1,18 +1,23 @@
 "use client";
-import { useState, useMemo, useEffect, useRef } from 'react';
-import Link from 'next/link';
-import { signOut } from 'next-auth/react';
+import { useState, useMemo, useEffect, useRef } from "react";
+import Link from "next/link";
+import { signOut } from "next-auth/react";
 
 const statusOptions = [
-  { value: 'Not Started', label: 'Not Started', color: 'gray' },
-  { value: 'In Progress', label: 'In Progress', color: 'blue' },
-  { value: 'Completed', label: 'Completed', color: 'green' },
-  { value: 'Blocked', label: 'Blocked', color: 'red' }
+  { value: "Not Started", label: "Not Started", color: "gray" },
+  { value: "In Progress", label: "In Progress", color: "blue" },
+  { value: "Completed", label: "Completed", color: "green" },
+  { value: "Blocked", label: "Blocked", color: "red" },
 ];
 
-export default function TableView({ projects, onUpdateProject, onReorderProjects, session }) {
-  const [selectedCategory, setSelectedCategory] = useState('all');
-  const [groupBy, setGroupBy] = useState('task'); // 'task' or 'category'
+export default function TableView({
+  projects,
+  onUpdateProject,
+  onReorderProjects,
+  session,
+}) {
+  const [selectedCategory, setSelectedCategory] = useState("all");
+  const [groupBy, setGroupBy] = useState("task"); // 'task' or 'category'
   const [updatingTasks, setUpdatingTasks] = useState(new Set()); // Track which tasks are updating
   const [draggedProjectId, setDraggedProjectId] = useState(null);
   const [dragOverProjectId, setDragOverProjectId] = useState(null);
@@ -25,10 +30,12 @@ export default function TableView({ projects, onUpdateProject, onReorderProjects
   const [addingTasks, setAddingTasks] = useState(new Set()); // Track which tasks are currently being added
   const projectRefs = useRef({});
   const updateQueueRef = useRef(Promise.resolve()); // Queue for local updates
-  
+
   // Pagination state - Always default to "All" projects
   const [currentPage, setCurrentPage] = useState(0);
-  const [projectsPerPage, setProjectsPerPage] = useState(projects.length || 999);
+  const [projectsPerPage, setProjectsPerPage] = useState(
+    projects.length || 999
+  );
   const [isClient, setIsClient] = useState(false);
 
   // Set isClient flag on mount
@@ -61,10 +68,10 @@ export default function TableView({ projects, onUpdateProject, onReorderProjects
   // Task order should NOT change when projects are reordered
   const allUniqueTaskNames = useMemo(() => {
     const taskMap = new Map();
-    
+
     // Collect all unique tasks from all projects
-    projects.forEach(project => {
-      project.tasks.forEach(task => {
+    projects.forEach((project) => {
+      project.tasks.forEach((task) => {
         if (!taskMap.has(task.name)) {
           taskMap.set(task.name, {
             name: task.name,
@@ -72,129 +79,134 @@ export default function TableView({ projects, onUpdateProject, onReorderProjects
             category: task.category,
             required: task.required,
             // Use the task's database ID for stable sorting if available
-            id: task.id
+            id: task.id,
           });
         }
       });
     });
-    
+
     // Define consistent category order for grouping
     const categoryOrder = {
-      'Infrastructure': 1,
-      'Security': 2,
-      'DevOps': 3,
-      'Testing': 4,
-      'Monitoring': 5,
-      'Deployment': 6,
-      'Marketing': 7,
-      'Legal': 8
+      Infrastructure: 1,
+      Security: 2,
+      DevOps: 3,
+      Testing: 4,
+      Monitoring: 5,
+      Deployment: 6,
+      Marketing: 7,
+      Legal: 8,
     };
-    
+
     // Convert to array and sort by category first, then by name within category
     // This groups related tasks together and maintains stable order
     const tasksArray = Array.from(taskMap.values());
-    
+
     tasksArray.sort((a, b) => {
       // Get category order (default to 999 for unknown categories)
       const catOrderA = categoryOrder[a.category] || 999;
       const catOrderB = categoryOrder[b.category] || 999;
-      
+
       // First, sort by category
       if (catOrderA !== catOrderB) {
         return catOrderA - catOrderB;
       }
-      
+
       // Within same category, sort by task name alphabetically
       return a.name.localeCompare(b.name);
     });
-    
+
     return tasksArray;
   }, [projects]);
 
   // Get all unique categories
   const categories = useMemo(() => {
     const cats = new Set();
-    projects.forEach(project => {
-      project.tasks.forEach(task => cats.add(task.category));
+    projects.forEach((project) => {
+      project.tasks.forEach((task) => cats.add(task.category));
     });
-    return ['all', ...Array.from(cats)];
+    return ["all", ...Array.from(cats)];
   }, [projects]);
 
   // Filter tasks by category AND ensure they exist in at least one project
   const filteredTasks = useMemo(() => {
     // First filter by category
-    const categoryFiltered = selectedCategory === 'all' 
-      ? allUniqueTaskNames 
-      : allUniqueTaskNames.filter(t => t.category === selectedCategory);
-    
+    const categoryFiltered =
+      selectedCategory === "all"
+        ? allUniqueTaskNames
+        : allUniqueTaskNames.filter((t) => t.category === selectedCategory);
+
     // Then filter out tasks that don't exist in ANY project
     // (This ensures rows disappear when all instances are deleted)
-    return categoryFiltered.filter(taskTemplate => {
-      return projects.some(project => 
-        project.tasks.some(task => task.name === taskTemplate.name)
+    return categoryFiltered.filter((taskTemplate) => {
+      return projects.some((project) =>
+        project.tasks.some((task) => task.name === taskTemplate.name)
       );
     });
   }, [allUniqueTaskNames, selectedCategory, projects]);
 
   // Group tasks by category if needed
   const groupedTasks = useMemo(() => {
-    if (groupBy === 'task') {
-      return [{ category: 'All Tasks', tasks: filteredTasks }];
+    if (groupBy === "task") {
+      return [{ category: "All Tasks", tasks: filteredTasks }];
     }
-    
+
     const groups = {};
-    filteredTasks.forEach(task => {
+    filteredTasks.forEach((task) => {
       if (!groups[task.category]) {
         groups[task.category] = [];
       }
       groups[task.category].push(task);
     });
-    
+
     return Object.entries(groups).map(([category, tasks]) => ({
       category,
-      tasks
+      tasks,
     }));
   }, [filteredTasks, groupBy]);
 
   // Find task in project
   const findTaskInProject = (project, taskName) => {
-    return project.tasks.find(t => t.name === taskName);
+    return project.tasks.find((t) => t.name === taskName);
   };
 
   // Update task in project
   const updateTaskInProject = async (projectId, taskName, updates) => {
-    console.log('updateTaskInProject called:', { projectId, taskName, updates });
-    
+    console.log("updateTaskInProject called:", {
+      projectId,
+      taskName,
+      updates,
+    });
+
     // Create unique key for this task update
     const taskKey = `${projectId}-${taskName}`;
-    
+
     // Add to updating set for visual feedback
-    setUpdatingTasks(prev => new Set([...prev, taskKey]));
+    setUpdatingTasks((prev) => new Set([...prev, taskKey]));
 
     try {
       // Use functional update to get the LATEST project state
       // This ensures we always work with current data, even after multiple rapid updates
       await onUpdateProject(projectId, (currentProject) => {
-        console.log('Functional update - current project:', currentProject);
-        console.log('Project tasks:', currentProject.tasks);
-        
+        console.log("Functional update - current project:", currentProject);
+        console.log("Project tasks:", currentProject.tasks);
+
         // Update the specific task
-        const updatedTasks = currentProject.tasks.map(task =>
+        const updatedTasks = currentProject.tasks.map((task) =>
           task.name === taskName ? { ...task, ...updates } : task
         );
-        
+
         const updatedProject = { ...currentProject, tasks: updatedTasks };
-        console.log('Created updatedProject:', updatedProject);
-        
+        console.log("Created updatedProject:", updatedProject);
+
         return updatedProject;
       });
-      
-      console.log('onUpdateProject completed successfully');
+
+      console.log("onUpdateProject completed successfully");
     } catch (error) {
-      console.error('Error updating task:', error);
+      console.error("Error updating task:", error);
     } finally {
       // Remove from updating set after update completes
-      setUpdatingTasks(prev => {
+      setUpdatingTasks((prev) => {
         const newSet = new Set(prev);
         newSet.delete(taskKey);
         return newSet;
@@ -205,52 +217,57 @@ export default function TableView({ projects, onUpdateProject, onReorderProjects
   // Add missing task to a project
   const addMissingTask = async (projectId, taskTemplate) => {
     const taskKey = `${projectId}-${taskTemplate.name}`;
-    
+
     // Prevent adding the same task multiple times concurrently
     if (addingTasks.has(taskKey)) {
-      console.log('Task addition already in progress:', taskKey);
+      console.log("Task addition already in progress:", taskKey);
       return;
     }
-    
-    setUpdatingTasks(prev => new Set([...prev, taskKey]));
-    setAddingTasks(prev => new Set([...prev, taskKey])); // Lock this specific task addition
+
+    setUpdatingTasks((prev) => new Set([...prev, taskKey]));
+    setAddingTasks((prev) => new Set([...prev, taskKey])); // Lock this specific task addition
 
     // Use functional update to get the LATEST project state
     try {
       await onUpdateProject(projectId, (currentProject) => {
         // Double-check task doesn't already exist (in case of race condition)
-        const taskExists = currentProject.tasks.some(t => t.name === taskTemplate.name);
+        const taskExists = currentProject.tasks.some(
+          (t) => t.name === taskTemplate.name
+        );
         if (taskExists) {
-          console.log('Task already exists, skipping addition:', taskTemplate.name);
+          console.log(
+            "Task already exists, skipping addition:",
+            taskTemplate.name
+          );
           return currentProject; // Return unchanged project
         }
-        
+
         // Create new task with default values
         const newTask = {
           name: taskTemplate.name,
           description: taskTemplate.description,
           category: taskTemplate.category,
           required: taskTemplate.required,
-          status: 'Not Started',
-          notes: '',
+          status: "Not Started",
+          notes: "",
           targetDate: null,
-          completedDate: null
+          completedDate: null,
         };
 
         const updatedTasks = [...currentProject.tasks, newTask];
         return { ...currentProject, tasks: updatedTasks };
       });
     } catch (error) {
-      console.error('Error adding task:', error);
+      console.error("Error adding task:", error);
     } finally {
       // Remove from updating set
-      setUpdatingTasks(prev => {
+      setUpdatingTasks((prev) => {
         const newSet = new Set(prev);
         newSet.delete(taskKey);
         return newSet;
       });
       // Unlock this specific task addition
-      setAddingTasks(prev => {
+      setAddingTasks((prev) => {
         const newSet = new Set(prev);
         newSet.delete(taskKey);
         return newSet;
@@ -261,16 +278,19 @@ export default function TableView({ projects, onUpdateProject, onReorderProjects
   // Add task to ALL projects that are missing it
   const addTaskToAllProjects = async (taskTemplate) => {
     // Find all projects that don't have this task
-    const projectsMissingTask = projects.filter(project => 
-      !project.tasks.some(task => task.name === taskTemplate.name)
+    const projectsMissingTask = projects.filter(
+      (project) =>
+        !project.tasks.some((task) => task.name === taskTemplate.name)
     );
 
     if (projectsMissingTask.length === 0) {
-      console.log('All projects already have this task');
+      console.log("All projects already have this task");
       return;
     }
 
-    console.log(`Adding "${taskTemplate.name}" to ${projectsMissingTask.length} projects`);
+    console.log(
+      `Adding "${taskTemplate.name}" to ${projectsMissingTask.length} projects`
+    );
 
     // Add task to each project sequentially to avoid race conditions
     for (const project of projectsMissingTask) {
@@ -292,9 +312,9 @@ export default function TableView({ projects, onUpdateProject, onReorderProjects
     if (!deleteConfirmation || isDeletingTask) return;
 
     const { projectId, taskName } = deleteConfirmation;
-    
+
     const taskKey = `${projectId}-${taskName}`;
-    setUpdatingTasks(prev => new Set([...prev, taskKey]));
+    setUpdatingTasks((prev) => new Set([...prev, taskKey]));
     setIsDeletingTask(true); // Lock deletion to prevent concurrent deletes
 
     // Use functional update to get the LATEST project state
@@ -302,14 +322,16 @@ export default function TableView({ projects, onUpdateProject, onReorderProjects
     try {
       await onUpdateProject(projectId, (currentProject) => {
         // Filter out the task from the CURRENT project state
-        const updatedTasks = currentProject.tasks.filter(task => task.name !== taskName);
+        const updatedTasks = currentProject.tasks.filter(
+          (task) => task.name !== taskName
+        );
         return { ...currentProject, tasks: updatedTasks };
       });
     } catch (error) {
-      console.error('Error removing task:', error);
+      console.error("Error removing task:", error);
     } finally {
       // Remove from updating set
-      setUpdatingTasks(prev => {
+      setUpdatingTasks((prev) => {
         const newSet = new Set(prev);
         newSet.delete(taskKey);
         return newSet;
@@ -328,13 +350,13 @@ export default function TableView({ projects, onUpdateProject, onReorderProjects
   // Drag and drop handlers for reordering projects
   const handleDragStart = (e, projectId) => {
     setDraggedProjectId(projectId);
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/html', e.target);
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/html", e.target);
   };
 
   const handleDragOver = (e, projectId) => {
     e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
+    e.dataTransfer.dropEffect = "move";
     if (projectId && projectId !== draggedProjectId) {
       setDragOverProjectId(projectId);
     }
@@ -350,14 +372,14 @@ export default function TableView({ projects, onUpdateProject, onReorderProjects
   const handleDrop = async (e, targetProjectId) => {
     e.preventDefault();
     setDragOverProjectId(null);
-    
+
     if (draggedProjectId === targetProjectId) {
       setDraggedProjectId(null);
       return;
     }
 
-    const draggedIndex = projects.findIndex(p => p.id === draggedProjectId);
-    const targetIndex = projects.findIndex(p => p.id === targetProjectId);
+    const draggedIndex = projects.findIndex((p) => p.id === draggedProjectId);
+    const targetIndex = projects.findIndex((p) => p.id === targetProjectId);
 
     if (draggedIndex === -1 || targetIndex === -1) {
       setDraggedProjectId(null);
@@ -366,7 +388,7 @@ export default function TableView({ projects, onUpdateProject, onReorderProjects
 
     // Capture positions before reorder (FLIP: First)
     const beforePositions = {};
-    projects.forEach(project => {
+    projects.forEach((project) => {
       const el = projectRefs.current[project.id];
       if (el) {
         const rect = el.getBoundingClientRect();
@@ -383,13 +405,13 @@ export default function TableView({ projects, onUpdateProject, onReorderProjects
     if (onReorderProjects) {
       onReorderProjects(newProjects);
     }
-    
+
     setIsReordering(true);
 
     // Use requestAnimationFrame to ensure DOM has updated
     requestAnimationFrame(() => {
       // Capture positions after reorder (FLIP: Last)
-      newProjects.forEach(project => {
+      newProjects.forEach((project) => {
         const el = projectRefs.current[project.id];
         if (el && beforePositions[project.id]) {
           const rect = el.getBoundingClientRect();
@@ -399,12 +421,13 @@ export default function TableView({ projects, onUpdateProject, onReorderProjects
           // Invert: Apply transform to make it look like it's still in the old position
           if (deltaX !== 0 || deltaY !== 0) {
             el.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
-            el.style.transition = 'none';
+            el.style.transition = "none";
 
             // Play: Animate to new position
             requestAnimationFrame(() => {
-              el.style.transition = 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)';
-              el.style.transform = 'translate(0, 0)';
+              el.style.transition =
+                "transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)";
+              el.style.transform = "translate(0, 0)";
             });
           }
         }
@@ -412,11 +435,11 @@ export default function TableView({ projects, onUpdateProject, onReorderProjects
 
       // Clean up after animation
       setTimeout(() => {
-        newProjects.forEach(project => {
+        newProjects.forEach((project) => {
           const el = projectRefs.current[project.id];
           if (el) {
-            el.style.transition = '';
-            el.style.transform = '';
+            el.style.transition = "";
+            el.style.transform = "";
           }
         });
         setIsReordering(false);
@@ -425,7 +448,7 @@ export default function TableView({ projects, onUpdateProject, onReorderProjects
     });
 
     // Save the new order to the server
-    await saveProjectOrder(newProjects.map(p => p.id));
+    await saveProjectOrder(newProjects.map((p) => p.id));
   };
 
   const handleDragEnd = () => {
@@ -437,17 +460,17 @@ export default function TableView({ projects, onUpdateProject, onReorderProjects
     setIsSavingOrder(true);
     setHasManualOrder(true); // Mark that user has manually reordered
     try {
-      const response = await fetch('/api/projects/order', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectOrder: projectIds })
+      const response = await fetch("/api/projects/order", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectOrder: projectIds }),
       });
 
       if (!response.ok) {
-        throw new Error('Failed to save project order');
+        throw new Error("Failed to save project order");
       }
     } catch (error) {
-      console.error('Error saving project order:', error);
+      console.error("Error saving project order:", error);
       // Optionally show toast notification
     } finally {
       setIsSavingOrder(false);
@@ -459,25 +482,25 @@ export default function TableView({ projects, onUpdateProject, onReorderProjects
     let total = 0;
     let completed = 0;
     let blocked = 0;
-    
-    projects.forEach(project => {
+
+    projects.forEach((project) => {
       const task = findTaskInProject(project, taskName);
       if (task) {
         total++;
-        if (task.status === 'Completed') completed++;
-        if (task.status === 'Blocked') blocked++;
+        if (task.status === "Completed") completed++;
+        if (task.status === "Blocked") blocked++;
       }
     });
-    
+
     // Count completed + blocked as "done" for percentage calculation
     const done = completed + blocked;
-    
-    return { 
-      total, 
-      completed, 
+
+    return {
+      total,
+      completed,
       blocked,
       done,
-      percentage: total > 0 ? (done / total) * 100 : 0 
+      percentage: total > 0 ? (done / total) * 100 : 0,
     };
   };
 
@@ -485,18 +508,19 @@ export default function TableView({ projects, onUpdateProject, onReorderProjects
   const overallStats = useMemo(() => {
     let totalTasks = 0;
     let completedTasks = 0;
-    
-    projects.forEach(project => {
-      project.tasks.forEach(task => {
+
+    projects.forEach((project) => {
+      project.tasks.forEach((task) => {
         totalTasks++;
-        if (task.status === 'Completed') completedTasks++;
+        if (task.status === "Completed") completedTasks++;
       });
     });
-    
+
     return {
       total: totalTasks,
       completed: completedTasks,
-      percentage: totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0
+      percentage:
+        totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0,
     };
   }, [projects]);
 
@@ -505,18 +529,42 @@ export default function TableView({ projects, onUpdateProject, onReorderProjects
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 flex items-center justify-center p-8">
         <div className="bg-white rounded-xl shadow-lg p-12 text-center max-w-md">
           <div className="bg-gray-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4">
-            <svg className="w-10 h-10 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 0v10" />
+            <svg
+              className="w-10 h-10 text-gray-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 0v10"
+              />
             </svg>
           </div>
-          <h3 className="text-xl font-semibold text-gray-900 mb-2">No Projects Available</h3>
-          <p className="text-gray-600 mb-6">Create some projects first to use the table view</p>
+          <h3 className="text-xl font-semibold text-gray-900 mb-2">
+            No Projects Available
+          </h3>
+          <p className="text-gray-600 mb-6">
+            Create some projects first to use the table view
+          </p>
           <Link
             href="/"
             className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            <svg
+              className="w-5 h-5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M10 19l-7-7m0 0l7-7m-7 7h18"
+              />
             </svg>
             Go to Dashboard
           </Link>
@@ -526,42 +574,83 @@ export default function TableView({ projects, onUpdateProject, onReorderProjects
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Simplified Header */}
-      <header className="bg-white border-b sticky top-0 z-50">
-        <div className="mx-auto px-6 py-2.5">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
+      {/* Professional Header (matches Landing Page) */}
+      <header className="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-50">
+        <div className="mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <h1 className="text-lg font-bold text-gray-900">Deployment Tracker</h1>
-              <nav className="flex gap-1">
-                <Link 
-                  href="/dashboard" 
-                  className="px-2.5 py-1 text-sm text-gray-700 hover:bg-gray-100 rounded transition-colors"
+            <div className="flex items-center gap-6">
+              <div className="flex items-center gap-3">
+                <div className="bg-gradient-to-br from-blue-500 to-indigo-600 p-2 rounded-lg shadow-md">
+                  <svg
+                    className="w-6 h-6 text-white"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                </div>
+                <div>
+                  <h1 className="text-xl font-bold text-gray-900">
+                    Production Tracker
+                  </h1>
+                  <p className="text-xs text-gray-600">Deployment Management</p>
+                </div>
+              </div>
+              <nav className="flex gap-2">
+                <Link
+                  href="/dashboard"
+                  className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
                 >
                   Dashboard
                 </Link>
-                <Link 
-                  href="/table" 
-                  className="px-2.5 py-1 text-sm text-white bg-blue-600 rounded"
+                <Link
+                  href="/table"
+                  className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg shadow-sm hover:bg-blue-700 transition-colors"
                 >
-                  Table
+                  Table View
                 </Link>
               </nav>
             </div>
 
-            <div className="flex items-center gap-6">
+            <div className="flex items-center gap-4">
               {/* Compact Stats */}
-              <div className="flex items-center gap-3 text-sm">
-                <span className="text-gray-600">{projects.length} projects</span>
+              <div className="flex items-center gap-3 text-sm bg-gray-50 px-4 py-2 rounded-lg border border-gray-200">
+                <span className="text-gray-900 font-medium">
+                  {projects.length} projects
+                </span>
                 <span className="text-gray-300">•</span>
-                <span className="font-semibold text-green-600">{overallStats.percentage}% complete</span>
+                <span className="font-semibold text-blue-600">
+                  {overallStats.percentage}% complete
+                </span>
                 {isSavingOrder && (
                   <>
                     <span className="text-gray-300">•</span>
                     <span className="flex items-center gap-1.5 text-blue-600">
-                      <svg className="animate-spin h-3.5 w-3.5" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      <svg
+                        className="animate-spin h-3.5 w-3.5"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                      >
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                        ></circle>
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                        ></path>
                       </svg>
                       Saving...
                     </span>
@@ -570,14 +659,14 @@ export default function TableView({ projects, onUpdateProject, onReorderProjects
               </div>
 
               {/* Pagination Controls */}
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 bg-gray-50 px-3 py-2 rounded-lg border border-gray-200">
                 <select
                   value={projectsPerPage}
                   onChange={(e) => {
                     setProjectsPerPage(Number(e.target.value));
                     setCurrentPage(0);
                   }}
-                  className="text-xs text-gray-900 bg-white border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  className="text-xs text-gray-900 bg-white border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="2">2</option>
                   <option value="4">4</option>
@@ -585,148 +674,226 @@ export default function TableView({ projects, onUpdateProject, onReorderProjects
                   <option value="8">8</option>
                   <option value={projects.length}>All</option>
                 </select>
-                
+
                 {totalPages > 1 && (
                   <div className="flex items-center gap-1">
                     <button
-                      onClick={() => setCurrentPage(Math.max(0, currentPage - 1))}
+                      onClick={() =>
+                        setCurrentPage(Math.max(0, currentPage - 1))
+                      }
                       disabled={currentPage === 0}
-                      className="p-1 rounded bg-white border border-gray-300 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                      className="p-1 rounded bg-white border border-gray-300 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                     >
-                      <svg className="w-4 h-4 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                      <svg
+                        className="w-4 h-4 text-gray-700"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M15 19l-7-7 7-7"
+                        />
                       </svg>
                     </button>
                     <span className="text-xs text-gray-600 px-2">
                       {currentPage + 1}/{totalPages}
                     </span>
                     <button
-                      onClick={() => setCurrentPage(Math.min(totalPages - 1, currentPage + 1))}
+                      onClick={() =>
+                        setCurrentPage(
+                          Math.min(totalPages - 1, currentPage + 1)
+                        )
+                      }
                       disabled={currentPage >= totalPages - 1}
-                      className="p-1 rounded bg-white border border-gray-300 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                      className="p-1 rounded bg-white border border-gray-300 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                     >
-                      <svg className="w-4 h-4 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      <svg
+                        className="w-4 h-4 text-gray-700"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M9 5l7 7-7 7"
+                        />
                       </svg>
                     </button>
                   </div>
                 )}
               </div>
 
-              {/* User Menu */}
-              <div className="flex items-center gap-2">
-                {session?.user?.image && (
-                  <img 
-                    src={session.user.image} 
-                    alt={session.user.name} 
-                    className="w-7 h-7 rounded-full"
-                  />
-                )}
-                <button
-                  onClick={() => signOut({ callbackUrl: '/' })}
-                  className="text-sm text-gray-600 hover:text-gray-900"
-                >
-                  Sign Out
-                </button>
-              </div>
+              {/* User Profile */}
+              {session?.user && (
+                <div className="flex items-center gap-3 bg-gray-50 px-4 py-2 rounded-lg border border-gray-200">
+                  {session.user.image && (
+                    <img
+                      src={session.user.image}
+                      alt={session.user.name}
+                      className="w-8 h-8 rounded-full border-2 border-blue-500 shadow-md"
+                    />
+                  )}
+                  <span className="text-sm font-medium text-gray-900">
+                    {session.user.name}
+                  </span>
+                </div>
+              )}
+              <button
+                onClick={() => signOut({ callbackUrl: "/" })}
+                className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                Sign Out
+              </button>
             </div>
           </div>
 
           {/* Enhanced Filters Section */}
-          <div className="mt-2 pt-2 border-t">
-            <button
-              onClick={() => setShowFilters(!showFilters)}
-              className="flex items-center gap-2 text-sm font-medium text-gray-700 hover:text-gray-900 mb-2 group"
-            >
-              <div className={`p-1 rounded-lg bg-gray-100 group-hover:bg-gray-200 transition-colors ${showFilters ? 'bg-blue-100' : ''}`}>
-                <svg className={`w-3.5 h-3.5 transition-transform ${showFilters ? 'rotate-90 text-blue-600' : 'text-gray-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
-                </svg>
-              </div>
-              <span>Filter & Group</span>
-              {(selectedCategory !== 'all' || groupBy === 'category') && (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-xs font-semibold">
-                  {selectedCategory !== 'all' && selectedCategory}
-                  {selectedCategory !== 'all' && groupBy === 'category' && ' • '}
-                  {groupBy === 'category' && 'Grouped'}
-                </span>
-              )}
-            </button>
-            
-            {showFilters && (
-              <div className="space-y-3 pb-3">
-                {/* Category Filter - Primary Action */}
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1.5 uppercase tracking-wide">
-                    Filter by Category
-                  </label>
-                  <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
-                    {categories.map(category => {
-                      const count = category === 'all' 
-                        ? allUniqueTaskNames.length 
-                        : allUniqueTaskNames.filter(t => t.category === category).length;
-                      const isActive = selectedCategory === category;
-                      
-                      return (
-                        <button
-                          key={category}
-                          onClick={() => setSelectedCategory(category)}
-                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
-                            isActive
-                              ? 'bg-blue-600 text-white shadow-md ring-2 ring-blue-200 scale-105'
-                              : 'bg-white text-gray-700 border-2 border-gray-200 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700'
-                          }`}
-                        >
-                          <span>{category === 'all' ? '✦ All Tasks' : category}</span>
-                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
-                            isActive 
-                              ? 'bg-blue-500 text-white' 
-                              : 'bg-gray-100 text-gray-600'
-                          }`}>
-                            {count}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
+          <div className="mx-auto px-6">
+            <div className="mt-2 pt-2 border-t border-gray-200">
+              <button
+                onClick={() => setShowFilters(!showFilters)}
+                className="flex items-center gap-2 text-sm font-medium text-gray-700 hover:text-gray-900 mb-2 group"
+              >
+                <div
+                  className={`p-1 rounded-lg bg-gray-100 group-hover:bg-gray-200 transition-colors ${
+                    showFilters ? "bg-blue-100" : ""
+                  }`}
+                >
+                  <svg
+                    className={`w-3.5 h-3.5 transition-transform ${
+                      showFilters ? "rotate-90 text-blue-600" : "text-gray-600"
+                    }`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2.5}
+                      d="M9 5l7 7-7 7"
+                    />
+                  </svg>
                 </div>
+                <span>Filter & Group</span>
+                {(selectedCategory !== "all" || groupBy === "category") && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-xs font-semibold">
+                    {selectedCategory !== "all" && selectedCategory}
+                    {selectedCategory !== "all" &&
+                      groupBy === "category" &&
+                      " • "}
+                    {groupBy === "category" && "Grouped"}
+                  </span>
+                )}
+              </button>
 
-                {/* Grouping Toggle - Secondary Action */}
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1.5 uppercase tracking-wide">
-                    Display Mode
-                  </label>
-                  <div className="inline-flex items-center bg-gray-100 rounded-lg p-1 gap-1">
-                    <button
-                      onClick={() => setGroupBy('task')}
-                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
-                        groupBy === 'task'
-                          ? 'bg-white text-gray-900 shadow-sm'
-                          : 'text-gray-600 hover:text-gray-900'
-                      }`}
-                    >
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-                      </svg>
-                      <span>List View</span>
-                    </button>
-                    <button
-                      onClick={() => setGroupBy('category')}
-                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
-                        groupBy === 'category'
-                          ? 'bg-white text-gray-900 shadow-sm'
-                          : 'text-gray-600 hover:text-gray-900'
-                      }`}
-                    >
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
-                      </svg>
-                      <span>Group by Category</span>
-                    </button>
+              {showFilters && (
+                <div className="space-y-3 pb-3">
+                  {/* Category Filter - Primary Action */}
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1.5 uppercase tracking-wide">
+                      Filter by Category
+                    </label>
+                    <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+                      {categories.map((category) => {
+                        const count =
+                          category === "all"
+                            ? allUniqueTaskNames.length
+                            : allUniqueTaskNames.filter(
+                                (t) => t.category === category
+                              ).length;
+                        const isActive = selectedCategory === category;
+
+                        return (
+                          <button
+                            key={category}
+                            onClick={() => setSelectedCategory(category)}
+                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
+                              isActive
+                                ? "bg-blue-600 text-white shadow-md ring-2 ring-blue-200 scale-105"
+                                : "bg-white text-gray-700 border-2 border-gray-200 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
+                            }`}
+                          >
+                            <span>
+                              {category === "all" ? "✦ All Tasks" : category}
+                            </span>
+                            <span
+                              className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                                isActive
+                                  ? "bg-blue-500 text-white"
+                                  : "bg-gray-100 text-gray-600"
+                              }`}
+                            >
+                              {count}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Grouping Toggle - Secondary Action */}
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1.5 uppercase tracking-wide">
+                      Display Mode
+                    </label>
+                    <div className="inline-flex items-center bg-gray-100 rounded-lg p-1 gap-1">
+                      <button
+                        onClick={() => setGroupBy("task")}
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                          groupBy === "task"
+                            ? "bg-white text-gray-900 shadow-sm"
+                            : "text-gray-600 hover:text-gray-900"
+                        }`}
+                      >
+                        <svg
+                          className="w-3.5 h-3.5"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M4 6h16M4 12h16M4 18h16"
+                          />
+                        </svg>
+                        <span>List View</span>
+                      </button>
+                      <button
+                        onClick={() => setGroupBy("category")}
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                          groupBy === "category"
+                            ? "bg-white text-gray-900 shadow-sm"
+                            : "text-gray-600 hover:text-gray-900"
+                        }`}
+                      >
+                        <svg
+                          className="w-3.5 h-3.5"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"
+                          />
+                        </svg>
+                        <span>Group by Category</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
       </header>
@@ -736,12 +903,14 @@ export default function TableView({ projects, onUpdateProject, onReorderProjects
         <div className="bg-white rounded-lg shadow border overflow-hidden">
           {groupedTasks.map((group, groupIdx) => (
             <div key={group.category}>
-              {groupBy === 'category' && (
+              {groupBy === "category" && (
                 <div className="bg-indigo-600 px-3 py-2 border-b">
-                  <h2 className="text-sm font-bold text-white">{group.category}</h2>
+                  <h2 className="text-sm font-bold text-white">
+                    {group.category}
+                  </h2>
                 </div>
               )}
-              
+
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
@@ -753,82 +922,117 @@ export default function TableView({ projects, onUpdateProject, onReorderProjects
                         const globalIdx = startIndex + idx;
                         const isDragging = draggedProjectId === project.id;
                         const isDragOver = dragOverProjectId === project.id;
-                        const completedCount = project.tasks.filter(t => t.status === 'Completed').length;
+                        const completedCount = project.tasks.filter(
+                          (t) => t.status === "Completed"
+                        ).length;
                         const totalCount = project.tasks.length;
-                        
+
                         return (
-                        <th 
-                          key={project.id}
-                          ref={(el) => projectRefs.current[project.id] = el}
-                          className={`px-3 py-3 text-center min-w-[180px] max-w-[180px] cursor-grab active:cursor-grabbing transition-all bg-gray-800 border-r border-gray-700 relative ${
-                            isReordering ? 'duration-300 ease-out' : 'duration-200'
-                          } ${
-                            isDragging 
-                              ? 'opacity-50 scale-95 shadow-2xl z-50' 
-                              : isDragOver 
-                              ? 'bg-blue-600 ring-4 ring-blue-400 ring-opacity-50 scale-105 shadow-2xl' 
-                              : 'hover:bg-gray-700'
-                          }`}
-                          draggable
-                          onDragStart={(e) => handleDragStart(e, project.id)}
-                          onDragOver={(e) => handleDragOver(e, project.id)}
-                          onDragLeave={handleDragLeave}
-                          onDrop={(e) => handleDrop(e, project.id)}
-                          onDragEnd={handleDragEnd}
-                        >
-                          {/* Drag indicator - Always visible on hover */}
-                          <div className={`absolute top-1 left-1/2 -translate-x-1/2 transition-all ${
-                            isDragging 
-                              ? 'opacity-0' 
-                              : isDragOver 
-                              ? 'opacity-100 scale-125' 
-                              : 'opacity-40 group-hover:opacity-100'
-                          }`}>
-                            <svg className={`w-5 h-5 ${isDragOver ? 'text-white' : 'text-gray-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M8 9h8M8 15h8" />
-                            </svg>
-                          </div>
-
-                          {/* Drop zone indicators */}
-                          {isDragOver && (
-                            <>
-                              <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-400 animate-pulse"></div>
-                              <div className="absolute right-0 top-0 bottom-0 w-1 bg-blue-400 animate-pulse"></div>
-                            </>
-                          )}
-
-                          <div className="flex flex-col items-center gap-1.5 relative z-10">
-                            {/* Project Name */}
-                            <div className={`text-white text-sm font-semibold px-2 text-center line-clamp-2 transition-all ${
-                              isDragOver ? 'scale-105 text-white' : ''
-                            }`} title={project.name}>
-                              {project.name}
-                            </div>
-                            
-                            {/* Progress Indicator */}
-                            <div className="w-full px-2">
-                              <div className="flex items-center justify-between text-[10px] text-gray-300 mb-1">
-                                <span>{completedCount}/{totalCount}</span>
-                                <span className="font-medium">
-                                  {totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0}%
-                                </span>
-                              </div>
-                              <div className="w-full bg-gray-700 rounded-full h-1.5 overflow-hidden">
-                                <div
-                                  className={`h-1.5 rounded-full transition-all duration-500 ${
-                                    completedCount === totalCount && totalCount > 0
-                                      ? 'bg-gradient-to-r from-green-400 to-emerald-500'
-                                      : completedCount > 0
-                                      ? 'bg-gradient-to-r from-blue-400 to-blue-600'
-                                      : 'bg-gray-600'
-                                  }`}
-                                  style={{ width: `${totalCount > 0 ? (completedCount / totalCount) * 100 : 0}%` }}
+                          <th
+                            key={project.id}
+                            ref={(el) => (projectRefs.current[project.id] = el)}
+                            className={`px-3 py-3 text-center min-w-[180px] max-w-[180px] cursor-grab active:cursor-grabbing transition-all bg-gray-800 border-r border-gray-700 relative ${
+                              isReordering
+                                ? "duration-300 ease-out"
+                                : "duration-200"
+                            } ${
+                              isDragging
+                                ? "opacity-50 scale-95 shadow-2xl z-50"
+                                : isDragOver
+                                ? "bg-blue-600 ring-4 ring-blue-400 ring-opacity-50 scale-105 shadow-2xl"
+                                : "hover:bg-gray-700"
+                            }`}
+                            draggable
+                            onDragStart={(e) => handleDragStart(e, project.id)}
+                            onDragOver={(e) => handleDragOver(e, project.id)}
+                            onDragLeave={handleDragLeave}
+                            onDrop={(e) => handleDrop(e, project.id)}
+                            onDragEnd={handleDragEnd}
+                          >
+                            {/* Drag indicator - Always visible on hover */}
+                            <div
+                              className={`absolute top-1 left-1/2 -translate-x-1/2 transition-all ${
+                                isDragging
+                                  ? "opacity-0"
+                                  : isDragOver
+                                  ? "opacity-100 scale-125"
+                                  : "opacity-40 group-hover:opacity-100"
+                              }`}
+                            >
+                              <svg
+                                className={`w-5 h-5 ${
+                                  isDragOver ? "text-white" : "text-gray-400"
+                                }`}
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2.5}
+                                  d="M8 9h8M8 15h8"
                                 />
+                              </svg>
+                            </div>
+
+                            {/* Drop zone indicators */}
+                            {isDragOver && (
+                              <>
+                                <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-400 animate-pulse"></div>
+                                <div className="absolute right-0 top-0 bottom-0 w-1 bg-blue-400 animate-pulse"></div>
+                              </>
+                            )}
+
+                            <div className="flex flex-col items-center gap-1.5 relative z-10">
+                              {/* Project Name */}
+                              <div
+                                className={`text-white text-sm font-semibold px-2 text-center line-clamp-2 transition-all ${
+                                  isDragOver ? "scale-105 text-white" : ""
+                                }`}
+                                title={project.name}
+                              >
+                                {project.name}
+                              </div>
+
+                              {/* Progress Indicator */}
+                              <div className="w-full px-2">
+                                <div className="flex items-center justify-between text-[10px] text-gray-300 mb-1">
+                                  <span>
+                                    {completedCount}/{totalCount}
+                                  </span>
+                                  <span className="font-medium">
+                                    {totalCount > 0
+                                      ? Math.round(
+                                          (completedCount / totalCount) * 100
+                                        )
+                                      : 0}
+                                    %
+                                  </span>
+                                </div>
+                                <div className="w-full bg-gray-700 rounded-full h-1.5 overflow-hidden">
+                                  <div
+                                    className={`h-1.5 rounded-full transition-all duration-500 ${
+                                      completedCount === totalCount &&
+                                      totalCount > 0
+                                        ? "bg-gradient-to-r from-green-400 to-emerald-500"
+                                        : completedCount > 0
+                                        ? "bg-gradient-to-r from-blue-400 to-blue-600"
+                                        : "bg-gray-600"
+                                    }`}
+                                    style={{
+                                      width: `${
+                                        totalCount > 0
+                                          ? (completedCount / totalCount) * 100
+                                          : 0
+                                      }%`,
+                                    }}
+                                  />
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        </th>
-                      );
+                          </th>
+                        );
                       })}
                       <th className="px-2 py-2 text-center w-24 sticky right-0 bg-gray-800 z-10 text-white text-xs font-semibold border-l border-gray-700">
                         Total
@@ -839,61 +1043,111 @@ export default function TableView({ projects, onUpdateProject, onReorderProjects
                     {group.tasks.map((taskTemplate, idx) => {
                       const stats = getTaskStats(taskTemplate.name);
                       const isEvenRow = idx % 2 === 0;
-                      
+
                       // Check if any projects are missing this task
-                      const projectsMissingTask = projects.filter(project => 
-                        !project.tasks.some(task => task.name === taskTemplate.name)
+                      const projectsMissingTask = projects.filter(
+                        (project) =>
+                          !project.tasks.some(
+                            (task) => task.name === taskTemplate.name
+                          )
                       );
                       const hasMissingProjects = projectsMissingTask.length > 0;
-                      
+
                       return (
-                        <tr key={`${taskTemplate.name}-${idx}`} className={`${isEvenRow ? 'bg-white' : 'bg-gray-50'} hover:bg-blue-50 group/row`}>
-                          <td className={`px-3 py-2 border-r sticky left-0 ${isEvenRow ? 'bg-white' : 'bg-gray-50'} z-10 hover:bg-blue-50 relative`}>
-                            <div className="text-sm font-semibold text-gray-900">{taskTemplate.name}</div>
-                            <div className="text-xs text-gray-600 mt-0.5">{taskTemplate.description}</div>
+                        <tr
+                          key={`${taskTemplate.name}-${idx}`}
+                          className={`${
+                            isEvenRow ? "bg-white" : "bg-gray-50"
+                          } hover:bg-blue-50 group/row`}
+                        >
+                          <td
+                            className={`px-3 py-2 border-r sticky left-0 ${
+                              isEvenRow ? "bg-white" : "bg-gray-50"
+                            } z-10 hover:bg-blue-50 relative`}
+                          >
+                            <div className="text-sm font-semibold text-gray-900">
+                              {taskTemplate.name}
+                            </div>
+                            <div className="text-xs text-gray-600 mt-0.5">
+                              {taskTemplate.description}
+                            </div>
                             <div className="flex items-center gap-2 mt-1">
                               <span className="inline-block text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-700">
                                 {taskTemplate.category}
                               </span>
                               {hasMissingProjects && (
                                 <button
-                                  onClick={() => addTaskToAllProjects(taskTemplate)}
+                                  onClick={() =>
+                                    addTaskToAllProjects(taskTemplate)
+                                  }
                                   className="opacity-0 group-hover/row:opacity-100 transition-opacity inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded bg-blue-50 hover:bg-blue-100 text-blue-700 hover:text-blue-900 border border-blue-200 font-medium"
-                                  title={`Add to ${projectsMissingTask.length} project${projectsMissingTask.length !== 1 ? 's' : ''}`}
+                                  title={`Add to ${
+                                    projectsMissingTask.length
+                                  } project${
+                                    projectsMissingTask.length !== 1 ? "s" : ""
+                                  }`}
                                 >
-                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                                  <svg
+                                    className="w-3 h-3"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth={2}
+                                      d="M12 6v6m0 0v6m0-6h6m-6 0H6"
+                                    />
                                   </svg>
                                   Add to {projectsMissingTask.length}
                                 </button>
                               )}
                             </div>
                           </td>
-                          
+
                           {paginatedProjects.map((project) => {
-                            const task = findTaskInProject(project, taskTemplate.name);
+                            const task = findTaskInProject(
+                              project,
+                              taskTemplate.name
+                            );
                             const taskKey = `${project.id}-${taskTemplate.name}`;
                             const isUpdating = updatingTasks.has(taskKey);
                             const isAdding = addingTasks.has(taskKey);
-                            const isConfirmingDelete = deleteConfirmation?.projectId === project.id && deleteConfirmation?.taskName === taskTemplate.name;
-                            
+                            const isConfirmingDelete =
+                              deleteConfirmation?.projectId === project.id &&
+                              deleteConfirmation?.taskName ===
+                                taskTemplate.name;
+
                             if (!task) {
                               return (
-                                <td key={project.id} className="px-2 py-2 text-center border-r">
+                                <td
+                                  key={project.id}
+                                  className="px-2 py-2 text-center border-r"
+                                >
                                   <button
-                                    onClick={() => addMissingTask(project.id, taskTemplate)}
+                                    onClick={() =>
+                                      addMissingTask(project.id, taskTemplate)
+                                    }
                                     disabled={isUpdating || isAdding}
                                     className="text-xs text-gray-400 hover:text-blue-600 disabled:opacity-50 transition-colors"
-                                    title={isAdding ? "Adding task..." : "Add this task to project"}
+                                    title={
+                                      isAdding
+                                        ? "Adding task..."
+                                        : "Add this task to project"
+                                    }
                                   >
-                                    {isAdding ? '⟳ adding...' : '+ add'}
+                                    {isAdding ? "⟳ adding..." : "+ add"}
                                   </button>
                                 </td>
                               );
                             }
-                            
+
                             return (
-                              <td key={project.id} className="px-2 py-2 border-r group relative">
+                              <td
+                                key={project.id}
+                                className="px-2 py-2 border-r group relative"
+                              >
                                 {isConfirmingDelete ? (
                                   // Show confirmation buttons (replace entire cell)
                                   <div className="flex items-center justify-end gap-1.5">
@@ -917,7 +1171,7 @@ export default function TableView({ projects, onUpdateProject, onReorderProjects
                                           Removing...
                                         </span>
                                       ) : (
-                                        '✓ Remove'
+                                        "✓ Remove"
                                       )}
                                     </button>
                                   </div>
@@ -931,40 +1185,87 @@ export default function TableView({ projects, onUpdateProject, onReorderProjects
                                           <div className="relative">
                                             <input
                                               type="checkbox"
-                                              checked={task.status === 'Completed'}
+                                              checked={
+                                                task.status === "Completed"
+                                              }
                                               readOnly
-                                              disabled={isUpdating || task.status === 'Blocked'}
+                                              disabled={
+                                                isUpdating ||
+                                                task.status === "Blocked"
+                                              }
                                               className="sr-only peer"
                                             />
-                                            <div 
+                                            <div
                                               onClick={(e) => {
                                                 e.stopPropagation();
                                                 // Prevent checking/unchecking if blocked or updating
-                                                if (!isUpdating && task.status !== 'Blocked') {
-                                                  const isCompleted = task.status !== 'Completed';
-                                                  updateTaskInProject(project.id, task.name, {
-                                                    status: isCompleted ? 'Completed' : 'Not Started',
-                                                    completed_at: isCompleted ? new Date().toISOString() : null
-                                                  });
+                                                if (
+                                                  !isUpdating &&
+                                                  task.status !== "Blocked"
+                                                ) {
+                                                  const isCompleted =
+                                                    task.status !== "Completed";
+                                                  updateTaskInProject(
+                                                    project.id,
+                                                    task.name,
+                                                    {
+                                                      status: isCompleted
+                                                        ? "Completed"
+                                                        : "Not Started",
+                                                      completed_at: isCompleted
+                                                        ? new Date().toISOString()
+                                                        : null,
+                                                    }
+                                                  );
                                                 }
                                               }}
                                               className={`w-5 h-5 border-2 rounded flex items-center justify-center transition-all ${
-                                              task.status === 'Completed'
-                                                ? 'bg-blue-600 border-blue-600'
-                                                : task.status === 'Blocked'
-                                                ? 'bg-red-100 border-red-300 cursor-not-allowed'
-                                                : 'bg-white border-gray-300 hover:border-blue-500'
-                                            } ${isUpdating ? 'opacity-50 cursor-not-allowed' : task.status === 'Blocked' ? 'cursor-not-allowed' : 'cursor-pointer'}`}
-                                              title={task.status === 'Blocked' ? 'Cannot complete blocked tasks' : ''}
+                                                task.status === "Completed"
+                                                  ? "bg-blue-600 border-blue-600"
+                                                  : task.status === "Blocked"
+                                                  ? "bg-red-100 border-red-300 cursor-not-allowed"
+                                                  : "bg-white border-gray-300 hover:border-blue-500"
+                                              } ${
+                                                isUpdating
+                                                  ? "opacity-50 cursor-not-allowed"
+                                                  : task.status === "Blocked"
+                                                  ? "cursor-not-allowed"
+                                                  : "cursor-pointer"
+                                              }`}
+                                              title={
+                                                task.status === "Blocked"
+                                                  ? "Cannot complete blocked tasks"
+                                                  : ""
+                                              }
                                             >
-                                              {task.status === 'Completed' && (
-                                                <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                              {task.status === "Completed" && (
+                                                <svg
+                                                  className="w-3.5 h-3.5 text-white"
+                                                  fill="none"
+                                                  stroke="currentColor"
+                                                  viewBox="0 0 24 24"
+                                                >
+                                                  <path
+                                                    strokeLinecap="round"
+                                                    strokeLinejoin="round"
+                                                    strokeWidth={3}
+                                                    d="M5 13l4 4L19 7"
+                                                  />
                                                 </svg>
                                               )}
-                                              {task.status === 'Blocked' && (
-                                                <svg className="w-3.5 h-3.5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                              {task.status === "Blocked" && (
+                                                <svg
+                                                  className="w-3.5 h-3.5 text-red-500"
+                                                  fill="none"
+                                                  stroke="currentColor"
+                                                  viewBox="0 0 24 24"
+                                                >
+                                                  <path
+                                                    strokeLinecap="round"
+                                                    strokeLinejoin="round"
+                                                    strokeWidth={2.5}
+                                                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                                                  />
                                                 </svg>
                                               )}
                                             </div>
@@ -979,17 +1280,17 @@ export default function TableView({ projects, onUpdateProject, onReorderProjects
                                         {/* User Info Icon - Shows who last updated */}
                                         {task.updated_by_user_name && (
                                           <div className="relative [&>svg:hover+div]:block">
-                                            <svg 
-                                              className="w-3.5 h-3.5 text-gray-400 hover:text-blue-600 transition-colors cursor-help" 
-                                              fill="none" 
-                                              stroke="currentColor" 
+                                            <svg
+                                              className="w-3.5 h-3.5 text-gray-400 hover:text-blue-600 transition-colors cursor-help"
+                                              fill="none"
+                                              stroke="currentColor"
                                               viewBox="0 0 24 24"
                                             >
-                                              <path 
-                                                strokeLinecap="round" 
-                                                strokeLinejoin="round" 
-                                                strokeWidth={2} 
-                                                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" 
+                                              <path
+                                                strokeLinecap="round"
+                                                strokeLinejoin="round"
+                                                strokeWidth={2}
+                                                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
                                               />
                                             </svg>
                                             {/* Tooltip - only shows on icon hover */}
@@ -1007,37 +1308,57 @@ export default function TableView({ projects, onUpdateProject, onReorderProjects
                                         {/* Status Dropdown */}
                                         <select
                                           value={task.status}
-                                          onChange={(e) => updateTaskInProject(project.id, task.name, {
-                                            status: e.target.value
-                                          })}
+                                          onChange={(e) =>
+                                            updateTaskInProject(
+                                              project.id,
+                                              task.name,
+                                              {
+                                                status: e.target.value,
+                                              }
+                                            )
+                                          }
                                           disabled={isUpdating}
                                           className={`w-full px-2 py-1 text-xs rounded border focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all ${
-                                            task.status === 'Completed'
-                                              ? 'bg-green-50 border-green-300 text-green-800 font-medium'
-                                              : task.status === 'In Progress'
-                                              ? 'bg-blue-50 border-blue-300 text-blue-800 font-medium'
-                                              : task.status === 'Blocked'
-                                              ? 'bg-red-50 border-red-300 text-red-800 font-medium'
-                                              : 'bg-gray-50 border-gray-300 text-gray-800'
-                                          } ${isUpdating ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                                            task.status === "Completed"
+                                              ? "bg-green-50 border-green-300 text-green-800 font-medium"
+                                              : task.status === "In Progress"
+                                              ? "bg-blue-50 border-blue-300 text-blue-800 font-medium"
+                                              : task.status === "Blocked"
+                                              ? "bg-red-50 border-red-300 text-red-800 font-medium"
+                                              : "bg-gray-50 border-gray-300 text-gray-800"
+                                          } ${
+                                            isUpdating
+                                              ? "opacity-50 cursor-not-allowed"
+                                              : "cursor-pointer"
+                                          }`}
                                         >
-                                          {statusOptions.map(opt => (
-                                            <option key={opt.value} value={opt.value}>
+                                          {statusOptions.map((opt) => (
+                                            <option
+                                              key={opt.value}
+                                              value={opt.value}
+                                            >
                                               {opt.label}
                                             </option>
                                           ))}
                                         </select>
                                       </div>
-
-                      
                                     </div>
 
                                     {/* Delete Button - Shows on hover */}
                                     <button
-                                      onClick={() => initiateTaskRemoval(project.id, task.name)}
+                                      onClick={() =>
+                                        initiateTaskRemoval(
+                                          project.id,
+                                          task.name
+                                        )
+                                      }
                                       disabled={isUpdating || isDeletingTask}
                                       className="absolute top-0.5 right-0.5 opacity-0 group-hover:opacity-100 transition-opacity px-1 py-0.5 text-[9px] rounded bg-red-50 hover:bg-red-100 text-red-600 hover:text-red-700 disabled:opacity-30"
-                                      title={isDeletingTask ? "Another deletion in progress" : "Remove this task from this project"}
+                                      title={
+                                        isDeletingTask
+                                          ? "Another deletion in progress"
+                                          : "Remove this task from this project"
+                                      }
                                     >
                                       ✕
                                     </button>
@@ -1046,29 +1367,50 @@ export default function TableView({ projects, onUpdateProject, onReorderProjects
                               </td>
                             );
                           })}
-                          
-                          <td className={`px-2 py-2 text-center border-l sticky right-0 ${isEvenRow ? 'bg-white' : 'bg-gray-50'} z-10 hover:bg-blue-50`}>
+
+                          <td
+                            className={`px-2 py-2 text-center border-l sticky right-0 ${
+                              isEvenRow ? "bg-white" : "bg-gray-50"
+                            } z-10 hover:bg-blue-50`}
+                          >
                             {stats.total === stats.blocked ? (
                               // All tasks are blocked - show N/A
                               <>
-                                <div className="text-lg font-bold text-red-600">N/A</div>
-                                <div className="text-[10px] text-gray-600">0/0</div>
+                                <div className="text-lg font-bold text-red-600">
+                                  N/A
+                                </div>
+                                <div className="text-[10px] text-gray-600">
+                                  0/0
+                                </div>
                               </>
                             ) : (
                               // Normal display
                               <>
-                                <div className={`text-lg font-bold ${
-                                  stats.percentage === 100 ? 'text-green-600' :
-                                  stats.percentage >= 50 ? 'text-blue-600' :
-                                  stats.percentage > 0 ? 'text-yellow-600' :
-                                  'text-gray-400'
-                                }`}>
+                                <div
+                                  className={`text-lg font-bold ${
+                                    stats.percentage === 100
+                                      ? "text-green-600"
+                                      : stats.percentage >= 50
+                                      ? "text-blue-600"
+                                      : stats.percentage > 0
+                                      ? "text-yellow-600"
+                                      : "text-gray-400"
+                                  }`}
+                                >
                                   {Math.round(stats.percentage)}%
                                 </div>
                                 <div className="text-[10px] flex items-center justify-center gap-0.5">
-                                  <span className="text-green-600 font-semibold">{stats.completed}</span>
+                                  <span className="text-green-600 font-semibold">
+                                    {stats.completed}
+                                  </span>
                                   <span className="text-gray-400">/</span>
-                                  <span className={stats.blocked > 0 ? "text-red-600 font-semibold" : "text-gray-600"}>
+                                  <span
+                                    className={
+                                      stats.blocked > 0
+                                        ? "text-red-600 font-semibold"
+                                        : "text-gray-600"
+                                    }
+                                  >
                                     {stats.total - stats.blocked}
                                   </span>
                                 </div>
