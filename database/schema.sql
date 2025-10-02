@@ -48,13 +48,18 @@ CREATE TABLE IF NOT EXISTS tasks (
   required BOOLEAN DEFAULT false COMMENT 'Is this task required for deployment?',
   notes TEXT COMMENT 'Task notes, links, or assignee info',
   completed_at TIMESTAMP NULL COMMENT 'When the task was completed',
+  updated_by_user_id VARCHAR(36) NULL COMMENT 'User who last updated this task',
+  updated_by_user_name VARCHAR(255) NULL COMMENT 'Cached name of user who last updated',
+  updated_by_user_image TEXT NULL COMMENT 'Cached profile image URL of user who last updated',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT 'Record creation timestamp',
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'Last update timestamp',
   FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  FOREIGN KEY (updated_by_user_id) REFERENCES users(id) ON DELETE SET NULL ON UPDATE CASCADE,
   INDEX idx_project_id (project_id),
   INDEX idx_category (category),
   INDEX idx_status (status),
-  INDEX idx_required (required)
+  INDEX idx_required (required),
+  INDEX idx_updated_by_user_id (updated_by_user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Tasks table';
 
 -- Sample data (optional - comment out if you don't want sample data)

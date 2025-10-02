@@ -21,6 +21,8 @@ export default function TableView({ projects, onUpdateProject, onReorderProjects
   const [showFilters, setShowFilters] = useState(false);
   const [hasManualOrder, setHasManualOrder] = useState(false); // Track if user has manually reordered
   const [deleteConfirmation, setDeleteConfirmation] = useState(null); // Track which task is being confirmed for deletion: { projectId, taskName }
+  const [isDeletingTask, setIsDeletingTask] = useState(false); // Prevent multiple simultaneous deletions
+  const [addingTasks, setAddingTasks] = useState(new Set()); // Track which tasks are currently being added
   const projectRefs = useRef({});
   const updateQueueRef = useRef(Promise.resolve()); // Queue for local updates
   
@@ -195,30 +197,42 @@ export default function TableView({ projects, onUpdateProject, onReorderProjects
 
   // Add missing task to a project
   const addMissingTask = async (projectId, taskTemplate) => {
-    const project = projects.find(p => p.id === projectId);
-    if (!project) return;
-
     const taskKey = `${projectId}-${taskTemplate.name}`;
+    
+    // Prevent adding the same task multiple times concurrently
+    if (addingTasks.has(taskKey)) {
+      console.log('Task addition already in progress:', taskKey);
+      return;
+    }
+    
     setUpdatingTasks(prev => new Set([...prev, taskKey]));
+    setAddingTasks(prev => new Set([...prev, taskKey])); // Lock this specific task addition
 
-    // Create new task with default values
-    const newTask = {
-      name: taskTemplate.name,
-      description: taskTemplate.description,
-      category: taskTemplate.category,
-      required: taskTemplate.required,
-      status: 'Not Started',
-      notes: '',
-      targetDate: null,
-      completedDate: null
-    };
-
-    const updatedTasks = [...project.tasks, newTask];
-    const updatedProject = { ...project, tasks: updatedTasks };
-
-    // Call parent update (parent handles state)
+    // Use functional update to get the LATEST project state
     try {
-      await onUpdateProject(projectId, updatedProject);
+      await onUpdateProject(projectId, (currentProject) => {
+        // Double-check task doesn't already exist (in case of race condition)
+        const taskExists = currentProject.tasks.some(t => t.name === taskTemplate.name);
+        if (taskExists) {
+          console.log('Task already exists, skipping addition:', taskTemplate.name);
+          return currentProject; // Return unchanged project
+        }
+        
+        // Create new task with default values
+        const newTask = {
+          name: taskTemplate.name,
+          description: taskTemplate.description,
+          category: taskTemplate.category,
+          required: taskTemplate.required,
+          status: 'Not Started',
+          notes: '',
+          targetDate: null,
+          completedDate: null
+        };
+
+        const updatedTasks = [...currentProject.tasks, newTask];
+        return { ...currentProject, tasks: updatedTasks };
+      });
     } catch (error) {
       console.error('Error adding task:', error);
     } finally {
@@ -228,35 +242,42 @@ export default function TableView({ projects, onUpdateProject, onReorderProjects
         newSet.delete(taskKey);
         return newSet;
       });
+      // Unlock this specific task addition
+      setAddingTasks(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(taskKey);
+        return newSet;
+      });
     }
   };
 
   // Remove task from a specific project
   const initiateTaskRemoval = (projectId, taskName) => {
+    // Prevent initiating new deletion if one is in progress
+    if (isDeletingTask) {
+      return;
+    }
     // Set the confirmation state to show inline confirm/cancel buttons
     setDeleteConfirmation({ projectId, taskName });
   };
 
   const confirmTaskRemoval = async () => {
-    if (!deleteConfirmation) return;
+    if (!deleteConfirmation || isDeletingTask) return;
 
     const { projectId, taskName } = deleteConfirmation;
-    const project = projects.find(p => p.id === projectId);
-    if (!project) {
-      setDeleteConfirmation(null);
-      return;
-    }
-
+    
     const taskKey = `${projectId}-${taskName}`;
     setUpdatingTasks(prev => new Set([...prev, taskKey]));
+    setIsDeletingTask(true); // Lock deletion to prevent concurrent deletes
 
-    // Filter out the task
-    const updatedTasks = project.tasks.filter(task => task.name !== taskName);
-    const updatedProject = { ...project, tasks: updatedTasks };
-
-    // Call parent update (parent handles state)
+    // Use functional update to get the LATEST project state
+    // This ensures we always work with the current state, even after multiple deletes
     try {
-      await onUpdateProject(projectId, updatedProject);
+      await onUpdateProject(projectId, (currentProject) => {
+        // Filter out the task from the CURRENT project state
+        const updatedTasks = currentProject.tasks.filter(task => task.name !== taskName);
+        return { ...currentProject, tasks: updatedTasks };
+      });
     } catch (error) {
       console.error('Error removing task:', error);
     } finally {
@@ -268,10 +289,12 @@ export default function TableView({ projects, onUpdateProject, onReorderProjects
       });
       // Clear confirmation state
       setDeleteConfirmation(null);
+      setIsDeletingTask(false); // Unlock deletion
     }
   };
 
   const cancelTaskRemoval = () => {
+    if (isDeletingTask) return; // Don't allow cancel during deletion
     setDeleteConfirmation(null);
   };
 
@@ -793,6 +816,7 @@ export default function TableView({ projects, onUpdateProject, onReorderProjects
                             const task = findTaskInProject(project, taskTemplate.name);
                             const taskKey = `${project.id}-${taskTemplate.name}`;
                             const isUpdating = updatingTasks.has(taskKey);
+                            const isAdding = addingTasks.has(taskKey);
                             const isConfirmingDelete = deleteConfirmation?.projectId === project.id && deleteConfirmation?.taskName === taskTemplate.name;
                             
                             if (!task) {
@@ -800,10 +824,11 @@ export default function TableView({ projects, onUpdateProject, onReorderProjects
                                 <td key={project.id} className="px-2 py-2 text-center border-r">
                                   <button
                                     onClick={() => addMissingTask(project.id, taskTemplate)}
-                                    disabled={isUpdating}
-                                    className="text-xs text-gray-400 hover:text-blue-600 disabled:opacity-50"
+                                    disabled={isUpdating || isAdding}
+                                    className="text-xs text-gray-400 hover:text-blue-600 disabled:opacity-50 transition-colors"
+                                    title={isAdding ? "Adding task..." : "Add this task to project"}
                                   >
-                                    + add
+                                    {isAdding ? '⟳ adding...' : '+ add'}
                                   </button>
                                 </td>
                               );
@@ -813,22 +838,29 @@ export default function TableView({ projects, onUpdateProject, onReorderProjects
                               <td key={project.id} className="px-2 py-2 border-r group relative">
                                 {isConfirmingDelete ? (
                                   // Show confirmation buttons (replace entire cell)
-                                  <div className="flex gap-1.5 justify-center">
+                                  <div className="flex items-center justify-end gap-1.5">
                                     <button
                                       onClick={cancelTaskRemoval}
-                                      disabled={isUpdating}
-                                      className="flex-1 px-3 py-1.5 text-xs font-semibold bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-300 rounded-md shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                      disabled={isUpdating || isDeletingTask}
+                                      className="px-2 py-1 text-[10px] font-semibold bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-300 rounded shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                       title="Cancel"
                                     >
                                       ✕ Cancel
                                     </button>
                                     <button
                                       onClick={confirmTaskRemoval}
-                                      disabled={isUpdating}
-                                      className="flex-1 px-3 py-1.5 text-xs font-semibold bg-red-500 hover:bg-red-600 text-white rounded-md shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                      disabled={isUpdating || isDeletingTask}
+                                      className="px-2 py-1 text-[10px] font-semibold bg-red-500 hover:bg-red-600 text-white rounded shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                       title="Confirm removal"
                                     >
-                                      ✓ Remove
+                                      {isDeletingTask && isUpdating ? (
+                                        <span className="flex items-center gap-1">
+                                          <span className="inline-block w-2 h-2 border border-white border-t-transparent rounded-full animate-spin"></span>
+                                          Removing...
+                                        </span>
+                                      ) : (
+                                        '✓ Remove'
+                                      )}
                                     </button>
                                   </div>
                                 ) : (
@@ -897,14 +929,25 @@ export default function TableView({ projects, onUpdateProject, onReorderProjects
                                           </option>
                                         ))}
                                       </select>
+
+                                      {/* User Profile Picture - Shows who last updated */}
+                                      {task.updated_by_user_image && (
+                                        <div className="flex-shrink-0" title={`Last updated by ${task.updated_by_user_name || 'Unknown'}`}>
+                                          <img 
+                                            src={task.updated_by_user_image} 
+                                            alt={task.updated_by_user_name || 'User'} 
+                                            className="w-6 h-6 rounded-full border border-gray-300 object-cover"
+                                          />
+                                        </div>
+                                      )}
                                     </div>
 
                                     {/* Delete Button - Shows on hover */}
                                     <button
                                       onClick={() => initiateTaskRemoval(project.id, task.name)}
-                                      disabled={isUpdating}
+                                      disabled={isUpdating || isDeletingTask}
                                       className="absolute top-0.5 right-0.5 opacity-0 group-hover:opacity-100 transition-opacity px-1 py-0.5 text-[9px] rounded bg-red-50 hover:bg-red-100 text-red-600 hover:text-red-700 disabled:opacity-30"
-                                      title="Remove this task from this project"
+                                      title={isDeletingTask ? "Another deletion in progress" : "Remove this task from this project"}
                                     >
                                       ✕
                                     </button>

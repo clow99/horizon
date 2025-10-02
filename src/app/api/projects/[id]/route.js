@@ -72,9 +72,9 @@ export async function PUT(request, { params }) {
         }
 
         if (task.id && existingTaskIds.includes(task.id)) {
-          // Update existing task
+          // Update existing task with user tracking
           await query(
-            'UPDATE tasks SET name = ?, category = ?, status = ?, required = ?, notes = ?, completed_at = ? WHERE id = ?',
+            'UPDATE tasks SET name = ?, category = ?, status = ?, required = ?, notes = ?, completed_at = ?, updated_by_user_id = ?, updated_by_user_name = ?, updated_by_user_image = ? WHERE id = ?',
             [
               task.name,
               task.category || null,
@@ -82,15 +82,18 @@ export async function PUT(request, { params }) {
               task.required || false,
               task.notes || null,
               completedAt,
+              session.user.id,
+              session.user.name || null,
+              session.user.image || null,
               task.id
             ]
           );
         } else {
-          // Insert new task
+          // Insert new task with user tracking
           const { v4: uuidv4 } = await import('uuid');
           const taskId = task.id || uuidv4();
           await query(
-            'INSERT INTO tasks (id, project_id, name, category, status, required, notes, completed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+            'INSERT INTO tasks (id, project_id, name, category, status, required, notes, completed_at, updated_by_user_id, updated_by_user_name, updated_by_user_image) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
             [
               taskId,
               id,
@@ -99,7 +102,10 @@ export async function PUT(request, { params }) {
               task.status || 'Not Started',
               task.required || false,
               task.notes || null,
-              completedAt
+              completedAt,
+              session.user.id,
+              session.user.name || null,
+              session.user.image || null
             ]
           );
         }

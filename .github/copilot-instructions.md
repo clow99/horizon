@@ -31,6 +31,7 @@ Next.js application with Tailwind CSS and React (JavaScript) for managing status
 - [x] **Table View Simplification**
 - [x] **Table View UX Improvements**
 - [x] **Category-Based Task Sorting**
+- [x] **User Profile Pictures for Task Updates**
 
 ## Summary
 
@@ -52,6 +53,7 @@ Successfully created a professional Production Deployment Tracker application wi
 - **Table View Simplification**: Clean, minimal design with collapsible filters and reduced visual clutter
 - **Table View UX**: Sticky headers, custom themed checkbox, full status dropdown for all workflow states
 - **Category-Based Task Sorting**: Tasks grouped by category (Infrastructure, Security, DevOps, Testing, Monitoring, Deployment, Marketing, Legal) for logical workflow organization
+- **User Profile Pictures**: Visual indicators showing who last updated/completed each task
 - **Dual Navigation**: Switch between project-centric and task-centric views
 - **MySQL Database Persistence**: All data stored with proper datetime format handling
 - **RESTful API**: Backend API endpoints with authentication and authorization
