@@ -34,6 +34,7 @@ export async function getProjects() {
       const [projects] = await connection.execute(
         `SELECT * FROM projects 
          WHERE user_id = ? 
+           AND (archived IS NULL OR archived = 0)
          ORDER BY 
            CASE WHEN display_order IS NOT NULL THEN display_order ELSE id END ASC,
            id ASC`,
@@ -51,6 +52,8 @@ export async function getProjects() {
 
           return {
             ...project,
+            archived: Boolean(project.archived),
+            archived_at: project.archived_at ? project.archived_at.toISOString() : null,
             tasks: tasks
           };
         })

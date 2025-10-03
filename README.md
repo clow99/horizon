@@ -96,6 +96,14 @@ MYSQL_PASSWORD=your-mysql-password
 
 3. The database tables will be created automatically on first run.
 
+#### Updating existing databases
+
+If you're upgrading an existing installation, run the archived-projects migration to add the new columns:
+
+```bash
+npm run migrate:archive
+```
+
 ### Running the Development Server
 
 ```bash
@@ -163,6 +171,12 @@ Perfect for batch processing the same task across multiple projects.
    - Top stats show overall progress
 
 **Pro Tip**: Use Table View when you're in "task mode" (e.g., setting up all SSL certificates) and Dashboard View when you're in "project mode" (e.g., focusing on one specific launch).
+
+### Archiving Projects
+
+- Hover a project header in Table View and click the archive icon to move it out of the active list.
+- Archived projects disappear from active views and can be brought back anytime.
+- Use the **Active / Archived** toggle in the Table View header to review archived projects and restore them when needed.
 
 ### Creating a New Project
 

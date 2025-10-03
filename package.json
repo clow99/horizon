@@ -7,7 +7,8 @@
     "build": "next build --turbopack",
     "start": "next start",
     "lint": "eslint",
-    "migrate": "node scripts/migrate-add-user-id.js"
+    "migrate": "node scripts/migrate-add-user-id.js",
+    "migrate:archive": "node scripts/add-archived-column.js"
   },
   "dependencies": {
     "dotenv": "^17.2.3",

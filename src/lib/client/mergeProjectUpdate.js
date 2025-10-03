@@ -56,6 +56,12 @@ function normalizeProject(project = {}) {
   if ('target_date' in normalized) {
     normalized.target_date = normalizeDateOnly(normalized.target_date);
   }
+  if ('archived' in normalized) {
+    normalized.archived = Boolean(normalized.archived);
+  }
+  if ('archived_at' in normalized) {
+    normalized.archived_at = normalizeDateTime(normalized.archived_at);
+  }
   return normalized;
 }
 

@@ -15,7 +15,7 @@ export async function PUT(request, { params }) {
     
     // Verify project ownership
     const projectCheck = await query(
-      'SELECT user_id FROM projects WHERE id = ?',
+      'SELECT user_id, archived, archived_at FROM projects WHERE id = ?',
       [id]
     );
     
@@ -36,8 +36,17 @@ export async function PUT(request, { params }) {
       status,
       tasks,
       changedTaskIds: changedTaskIdsRaw = [],
-      deletedTaskIds: deletedTaskIdsRaw = []
+      deletedTaskIds: deletedTaskIdsRaw = [],
+      archived,
+      archived_at
     } = body;
+
+    const formatDateTimeForMySQL = (value) => {
+      if (!value) return null;
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return null;
+      return date.toISOString().slice(0, 19).replace('T', ' ');
+    };
 
     const changedTaskIdSet = new Set(
       Array.isArray(changedTaskIdsRaw) ? changedTaskIdsRaw.filter(Boolean) : []
@@ -54,10 +63,31 @@ export async function PUT(request, { params }) {
       formattedTargetDate = date.toISOString().split('T')[0]; // Get just the date part (YYYY-MM-DD)
     }
     
+    const archivedProvided = typeof archived !== 'undefined';
+    const normalizedArchived = archivedProvided
+      ? Boolean(archived)
+      : Boolean(projectCheck[0]?.archived);
+
+    let archivedAtValue = null;
+    if (normalizedArchived) {
+      archivedAtValue = formatDateTimeForMySQL(
+        archived_at || projectCheck[0]?.archived_at || new Date().toISOString()
+      );
+    }
+
     // Update project
     await query(
-      'UPDATE projects SET name = ?, description = ?, client = ?, target_date = ?, status = ? WHERE id = ?',
-      [name, description || '', client || '', formattedTargetDate, status || 'Planning', id]
+      'UPDATE projects SET name = ?, description = ?, client = ?, target_date = ?, status = ?, archived = ?, archived_at = ? WHERE id = ?',
+      [
+        name,
+        description || '',
+        client || '',
+        formattedTargetDate,
+        status || 'Planning',
+        normalizedArchived ? 1 : 0,
+        archivedAtValue,
+        id
+      ]
     );
     
     let deletedTaskIds = [];
@@ -111,13 +141,6 @@ export async function PUT(request, { params }) {
       if (needsUuid) {
         ({ v4: uuidv4 } = await import('uuid'));
       }
-
-      const formatDateTimeForMySQL = (value) => {
-        if (!value) return null;
-        const date = new Date(value);
-        if (Number.isNaN(date.getTime())) return null;
-        return date.toISOString().slice(0, 19).replace('T', ' ');
-      };
 
       const normalizeForComparison = (taskRow) => {
         if (!taskRow) return null;
@@ -288,6 +311,8 @@ export async function PUT(request, { params }) {
         client: projectRecord.client,
         target_date: projectRecord.target_date ? projectRecord.target_date.toISOString().split('T')[0] : '',
         status: projectRecord.status,
+        archived: Boolean(projectRecord.archived),
+        archived_at: projectRecord.archived_at ? projectRecord.archived_at.toISOString() : null,
         updated_at: projectRecord.updated_at ? projectRecord.updated_at.toISOString() : null,
         created_at: projectRecord.created_at ? projectRecord.created_at.toISOString() : null
       },

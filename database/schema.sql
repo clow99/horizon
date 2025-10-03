@@ -29,10 +29,13 @@ CREATE TABLE IF NOT EXISTS projects (
   client VARCHAR(255) COMMENT 'Client or company name',
   target_date DATE COMMENT 'Target deployment date',
   status VARCHAR(50) DEFAULT 'Planning' COMMENT 'Project status',
+  archived TINYINT(1) DEFAULT 0 COMMENT 'Whether the project is archived',
+  archived_at DATETIME NULL COMMENT 'Timestamp when the project was archived',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT 'Record creation timestamp',
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'Last update timestamp',
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE,
   INDEX idx_user_id (user_id),
+  INDEX idx_archived (archived),
   INDEX idx_status (status),
   INDEX idx_target_date (target_date),
   INDEX idx_created_at (created_at)

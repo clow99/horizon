@@ -13,7 +13,7 @@ async function ensureTables() {
 }
 
 // GET all projects with their tasks (filtered by user)
-export async function GET() {
+export async function GET(request) {
   try {
     await ensureTables();
     
@@ -22,10 +22,24 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const url = request ? new URL(request.url) : null;
+    const archivedParam = url?.searchParams.get('archived');
+    const includeArchived = archivedParam === 'include';
+    const archivedOnly = archivedParam === 'only';
+
+    let whereClause = 'user_id = ?';
+    const params = [session.user.id];
+
+    if (archivedOnly) {
+      whereClause += ' AND archived = 1';
+    } else if (!includeArchived) {
+      whereClause += ' AND (archived IS NULL OR archived = 0)';
+    }
+
     // Get projects for this user only
     const projects = await query(
-      'SELECT * FROM projects WHERE user_id = ? ORDER BY created_at DESC',
-      [session.user.id]
+      `SELECT * FROM projects WHERE ${whereClause} ORDER BY archived ASC, created_at DESC`,
+      params
     );
     
     // Get all tasks for these projects
@@ -40,6 +54,8 @@ export async function GET() {
       // Group tasks by project
       const projectsWithTasks = projects.map(project => ({
         ...project,
+        archived: Boolean(project.archived),
+        archived_at: project.archived_at ? project.archived_at.toISOString() : null,
         target_date: project.target_date ? project.target_date.toISOString().split('T')[0] : '',
         tasks: tasks.filter(task => task.project_id === project.id).map(task => ({
           ...task,
@@ -103,6 +119,8 @@ export async function POST(request) {
     
     return NextResponse.json({
       ...newProject[0],
+      archived: Boolean(newProject[0]?.archived),
+      archived_at: newProject[0]?.archived_at ? newProject[0].archived_at.toISOString() : null,
       target_date: newProject[0].target_date ? newProject[0].target_date.toISOString().split('T')[0] : '',
       tasks: newTasks.map(task => ({
         ...task,

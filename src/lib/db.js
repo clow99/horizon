@@ -52,13 +52,50 @@ export async function initializeTables() {
         client VARCHAR(255),
         target_date DATE,
         status VARCHAR(50) DEFAULT 'Planning',
+        archived TINYINT(1) DEFAULT 0,
+        archived_at DATETIME NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
         INDEX idx_user_id (user_id),
+        INDEX idx_archived (archived),
         INDEX idx_status (status)
       )
     `);
+
+    // Backfill archived columns for existing installations
+    try {
+      await pool.execute(`
+        ALTER TABLE projects
+        ADD COLUMN archived TINYINT(1) DEFAULT 0
+      `);
+    } catch (error) {
+      if (error.code !== 'ER_DUP_FIELDNAME') {
+        throw error;
+      }
+    }
+
+    try {
+      await pool.execute(`
+        ALTER TABLE projects
+        ADD COLUMN archived_at DATETIME NULL AFTER archived
+      `);
+    } catch (error) {
+      if (error.code !== 'ER_DUP_FIELDNAME') {
+        throw error;
+      }
+    }
+
+    try {
+      await pool.execute(`
+        ALTER TABLE projects
+        ADD INDEX idx_archived (archived)
+      `);
+    } catch (error) {
+      if (error.code !== 'ER_DUP_KEYNAME') {
+        throw error;
+      }
+    }
 
     // Create tasks table
     await pool.execute(`

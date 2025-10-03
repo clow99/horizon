@@ -1,13 +1,25 @@
 "use client";
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import TableView from '@/components/TableView';
 import Toast from '@/components/Toast';
 import { mergeProjectUpdate } from '@/lib/client/mergeProjectUpdate';
 import { prepareProjectPayload } from '@/lib/client/prepareProjectPayload';
 
+const normalizeProject = (project = {}) => ({
+  ...project,
+  archived: Boolean(project?.archived),
+  archived_at: project?.archived_at || null,
+  tasks: Array.isArray(project?.tasks) ? project.tasks : []
+});
+
 export default function TableClient({ initialProjects, session }) {
-  const [projects, setProjects] = useState(initialProjects);
+  const [projects, setProjects] = useState(() =>
+    (initialProjects || []).map(normalizeProject)
+  );
   const [toasts, setToasts] = useState([]);
+  const [showArchived, setShowArchived] = useState(false);
+  const [isLoadingArchived, setIsLoadingArchived] = useState(false);
+  const [archivedLoaded, setArchivedLoaded] = useState(false);
 
   // Toast notification helper
   const showToast = useCallback((message, type = 'error') => {
@@ -39,7 +51,7 @@ export default function TableClient({ initialProjects, session }) {
           return prevProjects;
         }
         
-        updatedProject = updatedProjectOrFunction(currentProject);
+        updatedProject = normalizeProject(updatedProjectOrFunction(currentProject));
         console.log('Functional update created:', updatedProject);
 
         if (updatedProject?.__taskUpdate) {
@@ -66,7 +78,7 @@ export default function TableClient({ initialProjects, session }) {
       
       // Optimistic UI update (IMMEDIATE)
       setProjects(prevProjects =>
-        prevProjects.map(p => p.id === projectId ? updatedProject : p)
+        prevProjects.map(p => (p.id === projectId ? normalizeProject(updatedProject) : p))
       );
     }
 
@@ -148,7 +160,9 @@ export default function TableClient({ initialProjects, session }) {
         
         setProjects(prevProjects =>
           prevProjects.map(project =>
-            project.id === projectId ? mergeProjectUpdate(project, updated) : project
+            project.id === projectId
+              ? normalizeProject(mergeProjectUpdate(project, updated))
+              : project
           )
         );
       } catch (e) {
@@ -192,23 +206,106 @@ export default function TableClient({ initialProjects, session }) {
     }
   }, [showToast]);
 
-  const reorderProjects = useCallback((newProjects) => {
-    console.log('TableClient.reorderProjects called:', newProjects);
-    // Update state with new order
-    setProjects(newProjects);
-    
-    // Save the new order to the server
-    const projectIds = newProjects.map(p => p.id);
+  const reorderProjects = useCallback((reorderedActiveProjects) => {
+    console.log('TableClient.reorderProjects called:', reorderedActiveProjects);
+
+    setProjects(prevProjects => {
+      const activeIds = reorderedActiveProjects.map(p => p.id);
+      const activeMap = new Map(
+        reorderedActiveProjects.map(project => [project.id, normalizeProject(project)])
+      );
+
+      const activeProjects = prevProjects
+        .filter(project => !project.archived && activeIds.includes(project.id))
+        .map(project => normalizeProject(project));
+
+      const reorderedActive = activeIds.map(id => activeMap.get(id) || activeProjects.find(p => p.id === id)).filter(Boolean);
+      const archivedProjects = prevProjects.filter(project => project.archived).map(normalizeProject);
+
+      return [...reorderedActive, ...archivedProjects];
+    });
+
+    const projectIds = reorderedActiveProjects.map(p => p.id);
     saveProjectOrder(projectIds);
   }, [saveProjectOrder]);
+
+  const toggleArchive = useCallback(async (projectId, shouldArchive) => {
+    await updateProject(projectId, (currentProject) => ({
+      ...currentProject,
+      archived: shouldArchive,
+      archived_at: shouldArchive
+        ? new Date().toISOString()
+        : null
+    }));
+    if (shouldArchive) {
+      setArchivedLoaded(true);
+    }
+  }, [updateProject]);
+
+  const activeProjects = useMemo(
+    () => projects.filter(project => !project.archived),
+    [projects]
+  );
+
+  const archivedProjects = useMemo(
+    () => projects.filter(project => project.archived),
+    [projects]
+  );
+
+  const fetchArchivedProjects = useCallback(async () => {
+    if (isLoadingArchived || archivedLoaded) {
+      return;
+    }
+
+    setIsLoadingArchived(true);
+    try {
+      const response = await fetch('/api/projects?archived=only');
+      if (!response.ok) {
+        throw new Error('Failed to load archived projects');
+      }
+
+      const archivedProjectList = await response.json();
+      setProjects(prevProjects => {
+        const projectMap = new Map(prevProjects.map(project => [project.id, project]));
+        archivedProjectList.forEach(project => {
+          const normalized = normalizeProject(project);
+          projectMap.set(normalized.id, normalized);
+        });
+        return Array.from(projectMap.values());
+      });
+      setArchivedLoaded(true);
+    } catch (error) {
+      console.error(error);
+      showToast('Unable to load archived projects. Please try again later.', 'error');
+    } finally {
+      setIsLoadingArchived(false);
+    }
+  }, [archivedLoaded, isLoadingArchived, showToast]);
+
+  useEffect(() => {
+    if (showArchived && !archivedLoaded) {
+      fetchArchivedProjects();
+    }
+  }, [showArchived, archivedLoaded, fetchArchivedProjects]);
+
+  const displayedProjects = showArchived ? archivedProjects : activeProjects;
 
   return (
     <>
       <TableView 
-        projects={projects} 
+        projects={displayedProjects}
         onUpdateProject={updateProject} 
         onReorderProjects={reorderProjects}
         session={session} 
+        totalProjectsCount={projects.length}
+        activeProjectsCount={activeProjects.length}
+        archivedProjectsCount={archivedProjects.length}
+        showArchived={showArchived}
+        onShowArchived={() => setShowArchived(true)}
+        onShowActive={() => setShowArchived(false)}
+        onArchiveProject={(projectId) => toggleArchive(projectId, true)}
+        onRestoreProject={(projectId) => toggleArchive(projectId, false)}
+        isLoadingArchived={isLoadingArchived}
       />
       
       {/* Toast Notifications */}

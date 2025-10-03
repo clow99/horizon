@@ -87,6 +87,15 @@ function TableView({
   onUpdateProject,
   onReorderProjects,
   session,
+  totalProjectsCount: totalProjectsCountProp,
+  activeProjectsCount = projects.length,
+  archivedProjectsCount = 0,
+  showArchived = false,
+  onShowArchived,
+  onShowActive,
+  onArchiveProject,
+  onRestoreProject,
+  isLoadingArchived = false,
 }) {
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [groupBy, setGroupBy] = useState("category"); // 'task' or 'category'
@@ -164,16 +173,19 @@ function TableView({
     return projects.filter((project) => selectedSet.has(project.id));
   }, [projects, selectedProjectIds]);
 
-  const totalProjectsCount = projects.length;
+  const availableProjectsCount = projects.length;
+  const totalProjectsCount =
+    typeof totalProjectsCountProp === "number"
+      ? totalProjectsCountProp
+      : availableProjectsCount;
   const totalSelectedProjects = selectedProjectIds.length;
   const allProjectsSelected =
-    totalProjectsCount > 0 && totalSelectedProjects === totalProjectsCount;
+    availableProjectsCount > 0 && totalSelectedProjects === availableProjectsCount;
+  const viewLabel = showArchived ? "archived" : "active";
   const projectSelectionLabel =
-    totalSelectedProjects === 0
-      ? "No projects selected"
-      : allProjectsSelected
-      ? `${totalProjectsCount} projects`
-      : `${totalSelectedProjects} of ${totalProjectsCount} projects`;
+    availableProjectsCount === 0
+      ? `No ${viewLabel} projects`
+      : `${totalSelectedProjects} of ${availableProjectsCount} ${viewLabel} projects`;
 
   // Calculate pagination
   const effectiveProjectsPerPage = Math.min(projectsPerPage, 6);
@@ -486,12 +498,20 @@ function TableView({
 
   // Drag and drop handlers for reordering projects
   const handleDragStart = (e, projectId) => {
+    if (showArchived) {
+      e.preventDefault();
+      return;
+    }
     setDraggedProjectId(projectId);
     e.dataTransfer.effectAllowed = "move";
     e.dataTransfer.setData("text/html", e.target);
   };
 
   const handleDragOver = (e, projectId) => {
+    if (showArchived) {
+      e.preventDefault();
+      return;
+    }
     e.preventDefault();
     e.dataTransfer.dropEffect = "move";
     if (projectId && projectId !== draggedProjectId) {
@@ -500,6 +520,7 @@ function TableView({
   };
 
   const handleDragLeave = (e) => {
+    if (showArchived) return;
     // Only clear if we're leaving the drop zone completely
     if (e.currentTarget === e.target) {
       setDragOverProjectId(null);
@@ -507,6 +528,10 @@ function TableView({
   };
 
   const handleDrop = async (e, targetProjectId) => {
+    if (showArchived) {
+      e.preventDefault();
+      return;
+    }
     e.preventDefault();
     setDragOverProjectId(null);
 
@@ -683,7 +708,7 @@ function TableView({
     };
   }, [visibleProjects]);
 
-  if (projects.length === 0) {
+  if (totalProjectsCount === 0) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 flex items-center justify-center p-8">
         <div className="bg-white rounded-xl shadow-lg p-12 text-center max-w-md">
@@ -804,6 +829,14 @@ function TableView({
                       />
                     </svg>
                   </button>
+                  <p className="mt-0.5 text-xs text-gray-500">
+                    {showArchived
+                      ? `${archivedProjectsCount} archived • ${activeProjectsCount} active`
+                      : `${activeProjectsCount} active • ${archivedProjectsCount} archived`}
+                    {totalProjectsCount > activeProjectsCount + archivedProjectsCount
+                      ? ` • ${totalProjectsCount} total`
+                      : ""}
+                  </p>
 
                   {showProjectDropdown && (
                     <>
@@ -915,6 +948,59 @@ function TableView({
                       Saving...
                     </span>
                   </>
+                )}
+              </div>
+
+              {/* View Toggle */}
+              <div className="flex items-center bg-gray-50 px-1 py-1 rounded-lg border border-gray-200">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (showArchived && onShowActive) onShowActive();
+                  }}
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+                    showArchived
+                      ? "text-gray-600 hover:text-gray-900"
+                      : "bg-white text-gray-900 shadow-sm"
+                  }`}
+                  disabled={!showArchived}
+                >
+                  Active ({activeProjectsCount})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!showArchived && onShowArchived) onShowArchived();
+                  }}
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+                    showArchived
+                      ? "bg-white text-gray-900 shadow-sm"
+                      : "text-gray-600 hover:text-gray-900"
+                  } ${archivedProjectsCount === 0 ? "opacity-50 cursor-not-allowed" : ""}`}
+                  disabled={archivedProjectsCount === 0 && !showArchived}
+                >
+                  Archived ({archivedProjectsCount})
+                </button>
+                {showArchived && isLoadingArchived && (
+                  <svg
+                    className="ml-2 h-4 w-4 animate-spin text-blue-600"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    />
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V2C5.373 2 0 7.373 0 14h4z"
+                    />
+                  </svg>
                 )}
               </div>
 
@@ -1206,7 +1292,9 @@ function TableView({
         <div className="bg-white rounded-lg shadow border overflow-hidden">
           {visibleProjects.length === 0 ? (
             <div className="p-8 text-center text-sm text-gray-600">
-              No projects selected. Use the dropdown above to choose which projects to display.
+              {showArchived && isLoadingArchived
+                ? "Loading archived projects..."
+                : `No ${viewLabel} projects selected. Use the dropdown above to choose which projects to display.`}
             </div>
           ) : groupedTasks.length === 0 ? (
             <div className="p-8 text-center text-sm text-gray-600">
@@ -1254,7 +1342,7 @@ function TableView({
                                 ? "bg-blue-600 ring-4 ring-blue-400 ring-opacity-50 scale-105 shadow-2xl"
                                 : "hover:bg-gray-700"
                             }`}
-                            draggable
+                            draggable={!showArchived}
                             onDragStart={(e) => handleDragStart(e, project.id)}
                             onDragOver={(e) => handleDragOver(e, project.id)}
                             onDragLeave={handleDragLeave}
@@ -1297,14 +1385,111 @@ function TableView({
                             )}
 
                             <div className="flex flex-col items-center gap-1.5 relative z-10">
-                              {/* Project Name */}
-                              <div
-                                className={`text-white text-sm font-semibold px-2 text-center line-clamp-2 transition-all ${
-                                  isDragOver ? "scale-105 text-white" : ""
-                                }`}
-                                title={project.name}
-                              >
-                                {project.name}
+                              {/* Project Name & Actions */}
+                              <div className="flex items-center gap-1">
+                                <div
+                                  className={`text-white text-sm font-semibold px-2 text-center line-clamp-2 transition-all ${
+                                    isDragOver ? "scale-105 text-white" : ""
+                                  }`}
+                                  title={project.name}
+                                >
+                                  {project.name}
+                                </div>
+                                {(onArchiveProject || onRestoreProject) && (
+                                  <button
+                                    type="button"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      if (showArchived) {
+                                        if (onRestoreProject) {
+                                          const shouldRestore = confirm(
+                                            `Restore "${project.name}" to active projects?`
+                                          );
+                                          if (shouldRestore) {
+                                            onRestoreProject(project.id);
+                                          }
+                                        }
+                                      } else {
+                                        if (onArchiveProject) {
+                                          const shouldArchive = confirm(
+                                            `Archive "${project.name}"? You can restore it from the archived view.`
+                                          );
+                                          if (shouldArchive) {
+                                            onArchiveProject(project.id);
+                                          }
+                                        }
+                                      }
+                                    }}
+                                    className="inline-flex items-center justify-center rounded-md border border-white/30 bg-white/10 p-1 text-white hover:bg-white/20 hover:border-white transition-colors"
+                                    title={showArchived ? "Restore project" : "Archive project"}
+                                  >
+                                    {showArchived ? (
+                                      <svg
+                                        className="w-4 h-4"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                      >
+                                        <path
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                          strokeWidth={2}
+                                          d="M4 7h16"
+                                        />
+                                        <path
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                          strokeWidth={2}
+                                          d="M6 7v11a1 1 0 001 1h10a1 1 0 001-1V7"
+                                        />
+                                        <path
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                          strokeWidth={2}
+                                          d="M12 21v-8"
+                                        />
+                                        <path
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                          strokeWidth={2}
+                                          d="M9 16l3-3 3 3"
+                                        />
+                                      </svg>
+                                    ) : (
+                                      <svg
+                                        className="w-4 h-4"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                      >
+                                        <path
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                          strokeWidth={2}
+                                          d="M4 7h16"
+                                        />
+                                        <path
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                          strokeWidth={2}
+                                          d="M6 7v11a1 1 0 001 1h10a1 1 0 001-1V7"
+                                        />
+                                        <path
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                          strokeWidth={2}
+                                          d="M12 3v8"
+                                        />
+                                        <path
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                          strokeWidth={2}
+                                          d="M9 8l3 3 3-3"
+                                        />
+                                      </svg>
+                                    )}
+                                  </button>
+                                )}
                               </div>
 
                               {/* Progress Indicator */}
