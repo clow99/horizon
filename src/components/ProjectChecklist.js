@@ -23,8 +23,15 @@ const categoryColors = {
 
 function ProjectChecklist({ project, onUpdate, onDelete, onModalStateChange }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingField, setEditingField] = useState(null);
-  const [tempValue, setTempValue] = useState('');
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [showCardMenu, setShowCardMenu] = useState(false); // Dropdown on card
+  const [showModalMenu, setShowModalMenu] = useState(false); // Dropdown in modal
+  const [editFormData, setEditFormData] = useState({
+    name: project.name || '',
+    description: project.description || '',
+    client: project.client || '',
+    target_date: project.target_date || ''
+  });
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [showNotesFor, setShowNotesFor] = useState(null);
   const [showAddTaskForm, setShowAddTaskForm] = useState(false);
@@ -47,26 +54,45 @@ function ProjectChecklist({ project, onUpdate, onDelete, onModalStateChange }) {
     }
   };
 
-  const startEditing = (field, currentValue) => {
-    setEditingField(field);
-    setTempValue(currentValue || '');
+  // Open edit modal and sync form data
+  const openEditModal = () => {
+    setEditFormData({
+      name: project.name || '',
+      description: project.description || '',
+      client: project.client || '',
+      target_date: project.target_date || ''
+    });
+    setIsEditModalOpen(true);
+    setShowCardMenu(false);
+    setShowModalMenu(false);
   };
 
-  const finishEditing = (field) => {
-    if (editingField === field) {
-      // Use functional update
-      onUpdate((currentProject) => ({
-        ...currentProject,
-        [field]: tempValue
-      }));
-      setEditingField(null);
-      setTempValue('');
+  // Save edit changes
+  const saveEditChanges = () => {
+    onUpdate((currentProject) => ({
+      ...currentProject,
+      ...editFormData
+    }));
+    setIsEditModalOpen(false);
+  };
+
+  // Cancel edit
+  const cancelEdit = () => {
+    setIsEditModalOpen(false);
+    setEditFormData({
+      name: project.name || '',
+      description: project.description || '',
+      client: project.client || '',
+      target_date: project.target_date || ''
+    });
+  };
+
+  // Handle delete
+  const handleDelete = () => {
+    if (confirm('Are you sure you want to delete this project? This action cannot be undone.')) {
+      onDelete();
+      setIsModalOpen(false);
     }
-  };
-
-  const cancelEditing = () => {
-    setEditingField(null);
-    setTempValue('');
   };
 
   const addNewTask = () => {
@@ -271,24 +297,93 @@ function ProjectChecklist({ project, onUpdate, onDelete, onModalStateChange }) {
     <>
       {/* Project Card - Clickable to open modal */}
       <div 
-        onClick={() => updateModalState(true)}
-        className="bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden hover:shadow-lg transition-all duration-300 cursor-pointer hover:scale-[1.02] relative"
+        className="bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden hover:shadow-lg transition-all duration-300 relative group"
       >
-        {/* Template Badge - Small and subtle in top right */}
+        {/* Template Badge - Top right */}
         {project.project_type && PROJECT_TYPES[project.project_type] && (
-          <div className="absolute top-3 right-3 z-10">
+          <div className="absolute top-3 right-14 z-10 pointer-events-none">
             <div 
-              className="text-xs px-2 py-1 rounded bg-white/10 backdrop-blur-sm border border-white/20 text-white/70 flex items-center gap-1 shadow-sm"
-              title={PROJECT_TYPES[project.project_type].name}
+              className="text-xs px-2.5 py-1 rounded-md bg-blue-500/90 backdrop-blur-sm border border-blue-400/50 text-white flex items-center gap-1.5 shadow-md font-medium"
+              title={`Template: ${PROJECT_TYPES[project.project_type].name}`}
             >
-              <span className="text-[10px]">{PROJECT_TYPES[project.project_type].icon}</span>
-              <span className="font-medium opacity-90">{PROJECT_TYPES[project.project_type].name.split(' ')[0]}</span>
+              <span>{PROJECT_TYPES[project.project_type].icon}</span>
+              <span>{PROJECT_TYPES[project.project_type].name.split(' ')[0]}</span>
             </div>
           </div>
         )}
+
+        {/* 3-Dot Menu on Card */}
+        <div className="absolute top-3 right-3 z-20">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowCardMenu(!showCardMenu);
+            }}
+            className="p-2 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-white transition-colors opacity-0 group-hover:opacity-100"
+            title="Project Options"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+            </svg>
+          </button>
+
+          {/* Dropdown Menu */}
+          {showCardMenu && (
+            <>
+              <div 
+                className="fixed inset-0 z-10" 
+                onClick={() => setShowCardMenu(false)}
+              />
+              <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    updateModalState(true);
+                    setShowCardMenu(false);
+                  }}
+                  className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 transition-colors"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                  </svg>
+                  View Tasks
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openEditModal();
+                  }}
+                  className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 transition-colors"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                  Edit Project
+                </button>
+                <div className="border-t border-gray-200 my-1"></div>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowCardMenu(false);
+                    handleDelete();
+                  }}
+                  className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 transition-colors"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                  Delete Project
+                </button>
+              </div>
+            </>
+          )}
+        </div>
         
-        {/* Project Header */}
-        <div className="bg-gradient-to-r from-slate-800 to-slate-900 p-6">
+        {/* Project Header - Clickable */}
+        <div 
+          onClick={() => updateModalState(true)}
+          className="bg-gradient-to-r from-slate-800 to-slate-900 p-6 cursor-pointer"
+        >
           <div className="flex items-start justify-between mb-4">
             <div className="flex items-start gap-4 flex-1">
               <div className="text-white p-2">
@@ -303,254 +398,45 @@ function ProjectChecklist({ project, onUpdate, onDelete, onModalStateChange }) {
               </div>
             
             <div className="flex-1">
-              {editingField === 'name' ? (
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={tempValue}
-                    onChange={(e) => setTempValue(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') finishEditing('name');
-                      if (e.key === 'Escape') cancelEditing();
-                    }}
-                    className="bg-white text-gray-900 px-4 py-2 rounded-lg text-2xl font-bold focus:outline-none focus:ring-2 focus:ring-blue-400 flex-1"
-                    autoFocus
-                    placeholder="Project Name"
-                  />
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      finishEditing('name');
-                    }}
-                    className="bg-green-500 hover:bg-green-600 text-white p-2 rounded-lg transition-colors"
-                    title="Save"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      cancelEditing();
-                    }}
-                    className="bg-gray-500 hover:bg-gray-600 text-white p-2 rounded-lg transition-colors"
-                    title="Cancel"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2 group">
-                  <h2
-                    className="text-2xl font-bold text-white mb-2"
-                  >
-                    {project.name}
-                  </h2>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      startEditing('name', project.name);
-                    }}
-                    className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-white transition-all p-1"
-                    title="Edit name"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                    </svg>
-                  </button>
-                </div>
-              )}
+              <h2 className="text-2xl font-bold text-white mb-2">
+                {project.name}
+              </h2>
               
-              {editingField === 'description' ? (
-                <div className="flex items-center gap-2 mt-2">
-                  <input
-                    type="text"
-                    value={tempValue}
-                    onChange={(e) => setTempValue(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') finishEditing('description');
-                      if (e.key === 'Escape') cancelEditing();
-                    }}
-                    className="bg-white text-gray-900 px-3 py-1 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 flex-1"
-                    autoFocus
-                    placeholder="Project description"
-                  />
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      finishEditing('description');
-                    }}
-                    className="bg-green-500 hover:bg-green-600 text-white p-1.5 rounded transition-colors"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      cancelEditing();
-                    }}
-                    className="bg-gray-500 hover:bg-gray-600 text-white p-1.5 rounded transition-colors"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2 group">
-                  <p
-                    className="text-gray-300 text-sm"
-                  >
-                    {project.description}
-                  </p>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      startEditing('description', project.description);
-                    }}
-                    className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-white transition-all p-1"
-                    title="Edit description"
-                  >
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                    </svg>
-                  </button>
-                </div>
-              )}
+              <p className="text-sm text-gray-300">
+                {project.description || 'No description'}
+              </p>
 
               <div className="flex items-center gap-4 mt-3">
-                {editingField === 'client' ? (
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      value={tempValue}
-                      onChange={(e) => setTempValue(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') finishEditing('client');
-                        if (e.key === 'Escape') cancelEditing();
-                      }}
-                      className="bg-white text-gray-900 px-3 py-1 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-                      autoFocus
-                      placeholder="Client name"
-                    />
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        finishEditing('client');
-                      }}
-                      className="bg-green-500 hover:bg-green-600 text-white p-1 rounded text-xs"
-                    >
-                      ✓
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        cancelEditing();
-                      }}
-                      className="bg-gray-500 hover:bg-gray-600 text-white p-1 rounded text-xs"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2 group">
-                    <div className="flex items-center gap-2 text-blue-300 text-sm">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                      </svg>
-                      <span>{project.client || 'No client'}</span>
-                    </div>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        startEditing('client', project.client);
-                      }}
-                      className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-white transition-all p-1"
-                      title="Edit client"
-                    >
-                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                      </svg>
-                    </button>
-                  </div>
-                )}
+                <div className="flex items-center gap-2 text-blue-300 text-sm">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
+                  <span>{project.client || 'No client'}</span>
+                </div>
 
-                {editingField === 'target_date' ? (
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="date"
-                      value={tempValue}
-                      onChange={(e) => setTempValue(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') finishEditing('target_date');
-                        if (e.key === 'Escape') cancelEditing();
-                      }}
-                      className="bg-white text-gray-900 px-3 py-1 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-                      autoFocus
-                    />
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        finishEditing('target_date');
-                      }}
-                      className="bg-green-500 hover:bg-green-600 text-white p-1 rounded text-xs"
-                    >
-                      ✓
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        cancelEditing();
-                      }}
-                      className="bg-gray-500 hover:bg-gray-600 text-white p-1 rounded text-xs"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2 group">
-                    <div
-                      className={`flex items-center gap-2 text-sm px-3 py-1 rounded-full ${
-                        daysUntilTarget === null
-                          ? 'bg-gray-500 text-white'
-                          : daysUntilTarget < 0
-                          ? 'bg-red-500 text-white'
-                          : daysUntilTarget < 7
-                          ? 'bg-yellow-500 text-gray-900'
-                          : 'bg-green-500 text-white'
-                      }`}
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                      </svg>
-                      <span>
-                        {daysUntilTarget === null 
-                          ? 'No target date'
-                          : daysUntilTarget < 0 
-                          ? `${Math.abs(daysUntilTarget)} days overdue`
-                          : `${daysUntilTarget} days left`
-                        }
-                      </span>
-                    </div>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        startEditing('target_date', project.target_date);
-                      }}
-                      className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-white transition-all p-1"
-                      title="Edit target date"
-                    >
-                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                      </svg>
-                    </button>
-                  </div>
-                )}
+                <div
+                  className={`flex items-center gap-2 text-sm px-3 py-1 rounded-full ${
+                    daysUntilTarget === null
+                      ? 'bg-gray-500 text-white'
+                      : daysUntilTarget < 0
+                      ? 'bg-red-500 text-white'
+                      : daysUntilTarget < 7
+                      ? 'bg-yellow-500 text-gray-900'
+                      : 'bg-green-500 text-white'
+                  }`}
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  <span>
+                    {daysUntilTarget === null 
+                      ? 'No target date'
+                      : daysUntilTarget < 0 
+                      ? `${Math.abs(daysUntilTarget)} days overdue`
+                      : `${daysUntilTarget} days left`
+                    }
+                  </span>
+                </div>
               </div>
             </div>
           </div>
@@ -606,19 +492,60 @@ function ProjectChecklist({ project, onUpdate, onDelete, onModalStateChange }) {
               <div className="flex items-center justify-between">
                 <h2 className="text-2xl font-bold text-white">{project.name}</h2>
                 <div className="flex items-center gap-2">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onDelete();
-                      updateModalState(false);
-                    }}
-                    className="text-white hover:bg-red-500 rounded-lg p-2 transition-colors"
-                    title="Delete Project"
-                  >
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                    </svg>
-                  </button>
+                  {/* 3-Dot Dropdown Menu */}
+                  <div className="relative">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowModalMenu(!showModalMenu);
+                      }}
+                      className="text-white hover:bg-slate-700 rounded-lg p-2 transition-colors"
+                      title="Project Options"
+                    >
+                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+                      </svg>
+                    </button>
+                    
+                    {/* Dropdown Menu */}
+                    {showModalMenu && (
+                      <>
+                        <div 
+                          className="fixed inset-0 z-10" 
+                          onClick={() => setShowModalMenu(false)}
+                        />
+                        <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openEditModal();
+                            }}
+                            className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 transition-colors"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                            Edit Project
+                          </button>
+                          <div className="border-t border-gray-200 my-1"></div>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setShowModalMenu(false);
+                              handleDelete();
+                            }}
+                            className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 transition-colors"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                            Delete Project
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                  
                   <button
                     onClick={() => updateModalState(false)}
                     className="text-white hover:bg-slate-700 rounded-lg p-2 transition-colors"
@@ -980,6 +907,113 @@ function ProjectChecklist({ project, onUpdate, onDelete, onModalStateChange }) {
             )}
           </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Project Modal */}
+      {isEditModalOpen && (
+        <div 
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[60] p-4"
+          onClick={cancelEdit}
+        >
+          <div 
+            className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Edit Modal Header */}
+            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-6">
+              <div className="flex items-center justify-between">
+                <h2 className="text-2xl font-bold text-white">Edit Project</h2>
+                <button
+                  onClick={cancelEdit}
+                  className="text-white hover:bg-white/20 rounded-lg p-2 transition-colors"
+                  title="Close"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            {/* Edit Modal Body */}
+            <div className="p-6 space-y-6">
+              {/* Project Name */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Project Name <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={editFormData.name}
+                  onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+                  placeholder="Enter project name"
+                />
+              </div>
+
+              {/* Description */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Description
+                </label>
+                <textarea
+                  value={editFormData.description}
+                  onChange={(e) => setEditFormData({ ...editFormData, description: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none text-gray-900"
+                  placeholder="Enter project description"
+                  rows="3"
+                />
+              </div>
+
+              {/* Client */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Client
+                </label>
+                <input
+                  type="text"
+                  value={editFormData.client}
+                  onChange={(e) => setEditFormData({ ...editFormData, client: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+                  placeholder="Enter client name"
+                />
+              </div>
+
+              {/* Target Date */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Target Date
+                </label>
+                <input
+                  type="date"
+                  value={editFormData.target_date}
+                  onChange={(e) => setEditFormData({ ...editFormData, target_date: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+                />
+              </div>
+            </div>
+
+            {/* Edit Modal Footer */}
+            <div className="bg-gray-50 px-6 py-4 flex items-center justify-end gap-3 border-t border-gray-200">
+              <button
+                onClick={cancelEdit}
+                className="px-6 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={saveEditChanges}
+                disabled={!editFormData.name.trim()}
+                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                Save Changes
+              </button>
             </div>
           </div>
         </div>
