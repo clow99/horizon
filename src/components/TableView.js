@@ -832,12 +832,7 @@ function TableView({
                     </svg>
                   </button>
                   <p className="mt-0.5 text-xs text-gray-500">
-                    {showArchived
-                      ? `${archivedProjectsCount} archived • ${activeProjectsCount} active`
-                      : `${activeProjectsCount} active • ${archivedProjectsCount} archived`}
-                    {totalProjectsCount > activeProjectsCount + archivedProjectsCount
-                      ? ` • ${totalProjectsCount} total`
-                      : ""}
+                    {activeProjectsCount} {activeProjectsCount === 1 ? 'project' : 'projects'}
                   </p>
 
                   {showProjectDropdown && (
@@ -950,59 +945,6 @@ function TableView({
                       Saving...
                     </span>
                   </>
-                )}
-              </div>
-
-              {/* View Toggle */}
-              <div className="flex items-center bg-gray-50 px-1 py-1 rounded-lg border border-gray-200">
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (showArchived && onShowActive) onShowActive();
-                  }}
-                  className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
-                    showArchived
-                      ? "text-gray-600 hover:text-gray-900"
-                      : "bg-white text-gray-900 shadow-sm"
-                  }`}
-                  disabled={!showArchived}
-                >
-                  Active ({activeProjectsCount})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!showArchived && onShowArchived) onShowArchived();
-                  }}
-                  className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
-                    showArchived
-                      ? "bg-white text-gray-900 shadow-sm"
-                      : "text-gray-600 hover:text-gray-900"
-                  } ${archivedProjectsCount === 0 ? "opacity-50 cursor-not-allowed" : ""}`}
-                  disabled={archivedProjectsCount === 0 && !showArchived}
-                >
-                  Archived ({archivedProjectsCount})
-                </button>
-                {showArchived && isLoadingArchived && (
-                  <svg
-                    className="ml-2 h-4 w-4 animate-spin text-blue-600"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                  >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    />
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V2C5.373 2 0 7.373 0 14h4z"
-                    />
-                  </svg>
                 )}
               </div>
 
