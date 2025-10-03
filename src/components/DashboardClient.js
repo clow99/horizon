@@ -1,11 +1,14 @@
 "use client";
-import { useState, useRef, useMemo, useCallback } from "react";
+import { useState, useRef, useMemo, useCallback, useEffect } from "react";
+import Image from "next/image";
 import { signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import ProjectChecklist from "@/components/ProjectChecklist";
 import Toast from "@/components/Toast";
 import Link from "next/link";
 import { createProjectTasks } from "@/config/tasks";
+import { mergeProjectUpdate } from "@/lib/client/mergeProjectUpdate";
+import { prepareProjectPayload } from "@/lib/client/prepareProjectPayload";
 
 export default function DashboardClient({ initialProjects, session }) {
   const router = useRouter();
@@ -18,13 +21,14 @@ export default function DashboardClient({ initialProjects, session }) {
   const [draggedProjectId, setDraggedProjectId] = useState(null);
   const [dragOverProjectId, setDragOverProjectId] = useState(null);
   const [isSavingOrder, setIsSavingOrder] = useState(false);
+  const [isAnyModalOpen, setIsAnyModalOpen] = useState(false); // Track if any project modal is open
   const projectRefs = useRef({});
 
   // Toast notification helper
-  const showToast = (message, type = "error") => {
+  const showToast = useCallback((message, type = "error") => {
     const id = Date.now();
     setToasts((prev) => [...prev, { id, message, type }]);
-  };
+  }, []);
 
   const removeToast = (id) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
@@ -102,52 +106,102 @@ export default function DashboardClient({ initialProjects, session }) {
         showToast("Failed to delete project. It has been restored.", "error");
       }
     }
-  }, [projects, router]);
+  }, [projects, router, showToast]);
 
   const updateProject = useCallback(async (projectId, updatedProjectOrFunction) => {
-    // ALWAYS do optimistic update IMMEDIATELY
-    let updatedProject;
+    // If it's a direct object (from child after API success), just update state
+    if (typeof updatedProjectOrFunction !== "function") {
+      const updatePayload = updatedProjectOrFunction;
+      console.log('Updating project from child (direct):', projectId, updatePayload);
 
-    if (typeof updatedProjectOrFunction === "function") {
-      // Functional update - get latest state
-      setProjects((prevProjects) => {
-        const currentProject = prevProjects.find((p) => p.id === projectId);
-        if (!currentProject) return prevProjects;
-
-        updatedProject = updatedProjectOrFunction(currentProject);
-        return prevProjects.map((p) =>
-          p.id === projectId ? updatedProject : p
-        );
-      });
-    } else {
-      // Direct object update
-      updatedProject = updatedProjectOrFunction;
-      const previousProjects = [...projects];
       setProjects((prevProjects) =>
-        prevProjects.map((p) => (p.id === projectId ? updatedProject : p))
+        prevProjects.map((p) => (p.id === projectId ? mergeProjectUpdate(p, updatePayload) : p))
       );
+      return;
     }
 
-    if (!updatedProject) return;
+    // For functional updates (from dashboard edits), do optimistic update + API call
+    let updatedProject;
+    let previousProjects;
+    let taskUpdateMeta;
+
+    setProjects((prevProjects) => {
+      previousProjects = [...prevProjects];
+      const currentProject = prevProjects.find((p) => p.id === projectId);
+      
+      if (!currentProject) {
+        console.warn('Project not found:', projectId);
+        return prevProjects;
+      }
+
+      updatedProject = updatedProjectOrFunction(currentProject);
+      console.log('Updating project (functional):', projectId, updatedProject);
+
+      if (updatedProject?.__taskUpdate) {
+        taskUpdateMeta = updatedProject.__taskUpdate;
+        delete updatedProject.__taskUpdate;
+        if (updatedProject.changedTaskIds) {
+          delete updatedProject.changedTaskIds;
+        }
+      }
+
+      return prevProjects.map((p) => (p.id === projectId ? updatedProject : p));
+    });
+
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    if (!updatedProject) {
+      console.error('Failed to capture updated project');
+      return;
+    }
 
     try {
-      const response = await fetch(`/api/projects/${projectId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(updatedProject),
-      });
+      let serverUpdate;
 
-      if (!response.ok) throw new Error("Failed to update project");
+      if (taskUpdateMeta?.taskId) {
+        const response = await fetch(`/api/projects/${projectId}/tasks/${taskUpdateMeta.taskId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(taskUpdateMeta.updates || {}),
+        });
 
-      // Don't update with server response - optimistic update is sufficient
-      // This prevents flickering and reordering issues
-      router.refresh();
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('Server error:', errorText);
+          throw new Error("Failed to update task");
+        }
+
+        serverUpdate = await response.json();
+      } else {
+        const payload = prepareProjectPayload(updatedProject);
+
+        const response = await fetch(`/api/projects/${projectId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('Server error:', errorText);
+          throw new Error("Failed to update project");
+        }
+
+        serverUpdate = await response.json();
+      }
+      console.log('Server response:', serverUpdate);
+
+      setProjects((prevProjects) =>
+        prevProjects.map((p) => (p.id === projectId ? mergeProjectUpdate(p, serverUpdate) : p))
+      );
     } catch (e) {
       console.error("Error updating project:", e);
-      // On error, just show toast - user can refresh to get server state
-      showToast("Failed to update project. Please refresh the page.", "error");
+      if (previousProjects) {
+        setProjects(previousProjects);
+      }
+      showToast("Failed to update project. Please try again.", "error");
     }
-  }, [projects, router]);
+  }, [showToast]);
 
   // Save project order to server
   const saveProjectOrder = async (projectIds) => {
@@ -176,12 +230,18 @@ export default function DashboardClient({ initialProjects, session }) {
 
   // Get or create memoized update callback for a specific project
   const getUpdateCallback = useCallback((projectId) => {
+    // Clear the map to avoid stale closures when updateProject changes
     if (!projectUpdateCallbacks.current.has(projectId)) {
       projectUpdateCallbacks.current.set(projectId, (updatedProject) => {
         updateProject(projectId, updatedProject);
       });
     }
     return projectUpdateCallbacks.current.get(projectId);
+  }, [updateProject]);
+
+  // Clear callbacks when updateProject changes to avoid stale closures
+  useEffect(() => {
+    projectUpdateCallbacks.current.clear();
   }, [updateProject]);
 
   // Get or create memoized delete callback for a specific project
@@ -192,6 +252,11 @@ export default function DashboardClient({ initialProjects, session }) {
       });
     }
     return projectDeleteCallbacks.current.get(projectId);
+  }, [deleteProject]);
+
+  // Clear callbacks when deleteProject changes to avoid stale closures
+  useEffect(() => {
+    projectDeleteCallbacks.current.clear();
   }, [deleteProject]);
 
   // Drag and drop handlers for reordering projects
@@ -447,9 +512,12 @@ export default function DashboardClient({ initialProjects, session }) {
                     className="flex items-center gap-3 bg-gray-50 px-4 py-2 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors"
                   >
                     {session.user.image && (
-                      <img
+                      <Image
                         src={session.user.image}
-                        alt={session.user.name}
+                        alt={session.user.name || "User avatar"}
+                        width={32}
+                        height={32}
+                        unoptimized
                         className="w-8 h-8 rounded-full border-2 border-blue-500 shadow-md"
                       />
                     )}
@@ -812,14 +880,14 @@ export default function DashboardClient({ initialProjects, session }) {
                   <div
                     key={project.id}
                     ref={(el) => projectRefs.current[project.id] = el}
-                    draggable={sortBy === "custom"}
+                    draggable={sortBy === "custom" && !isAnyModalOpen}
                     onDragStart={(e) => handleDragStart(e, project.id)}
                     onDragOver={(e) => handleDragOver(e, project.id)}
                     onDragLeave={handleDragLeave}
                     onDrop={(e) => handleDrop(e, project.id)}
                     onDragEnd={handleDragEnd}
                     className={`transition-all ${
-                      sortBy === "custom" ? "cursor-grab active:cursor-grabbing" : ""
+                      sortBy === "custom" && !isAnyModalOpen ? "cursor-grab active:cursor-grabbing" : ""
                     } ${
                       isDragging ? "opacity-50 scale-95" : ""
                     } ${
@@ -830,6 +898,7 @@ export default function DashboardClient({ initialProjects, session }) {
                       project={project}
                       onUpdate={getUpdateCallback(project.id)}
                       onDelete={getDeleteCallback(project.id)}
+                      onModalStateChange={setIsAnyModalOpen}
                     />
                   </div>
                 );

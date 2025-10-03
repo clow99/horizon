@@ -233,7 +233,7 @@ export default function LandingPage() {
               </div>
               <h3 className="text-2xl font-bold text-gray-900 mb-3">Fully Customizable</h3>
               <p className="text-gray-600 leading-relaxed mb-4">
-                Tailor every project to your needs. Add, edit, or remove tasks. Create custom workflows that match your team's process.
+                Tailor every project to your needs. Add, edit, or remove tasks. Create custom workflows that match your team&rsquo;s process.
               </p>
               <ul className="space-y-2 text-sm text-gray-600">
                 <li className="flex items-center gap-2">

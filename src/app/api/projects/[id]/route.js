@@ -28,7 +28,24 @@ export async function PUT(request, { params }) {
     }
     
     const body = await request.json();
-    const { name, description, client, target_date, status, tasks } = body;
+    const {
+      name,
+      description,
+      client,
+      target_date,
+      status,
+      tasks,
+      changedTaskIds: changedTaskIdsRaw = [],
+      deletedTaskIds: deletedTaskIdsRaw = []
+    } = body;
+
+    const changedTaskIdSet = new Set(
+      Array.isArray(changedTaskIdsRaw) ? changedTaskIdsRaw.filter(Boolean) : []
+    );
+    const explicitDeletedIdSet = new Set(
+      Array.isArray(deletedTaskIdsRaw) ? deletedTaskIdsRaw.filter(Boolean) : []
+    );
+    const isPartialTaskUpdate = changedTaskIdSet.size > 0;
     
     // Format target_date for MySQL (YYYY-MM-DD format)
     let formattedTargetDate = null;
@@ -43,95 +60,172 @@ export async function PUT(request, { params }) {
       [name, description || '', client || '', formattedTargetDate, status || 'Planning', id]
     );
     
-    // Update tasks if provided
-    if (tasks) {
-      // Get existing task IDs
-      const existingTasks = await query('SELECT id FROM tasks WHERE project_id = ?', [id]);
-      const existingTaskIds = existingTasks.map(t => t.id);
-      const newTaskIds = tasks.map(t => t.id).filter(Boolean);
-      
-      // Delete tasks that are no longer in the list
-      const tasksToDelete = existingTaskIds.filter(tid => !newTaskIds.includes(tid));
-      if (tasksToDelete.length > 0) {
-        const placeholders = tasksToDelete.map(() => '?').join(',');
-        await query(`DELETE FROM tasks WHERE id IN (${placeholders})`, tasksToDelete);
+    let deletedTaskIds = [];
+    const updatedTaskIdSet = new Set();
+
+    let existingTasks = [];
+    let existingTaskMap = new Map();
+    if (Array.isArray(tasks) || explicitDeletedIdSet.size > 0) {
+      existingTasks = await query('SELECT * FROM tasks WHERE project_id = ?', [id]);
+      existingTaskMap = new Map(existingTasks.map(task => [task.id, task]));
+    }
+
+    if (explicitDeletedIdSet.size > 0) {
+      const validDeletedIds = existingTasks
+        .filter(task => explicitDeletedIdSet.has(task.id))
+        .map(task => task.id);
+
+      if (validDeletedIds.length > 0) {
+        const placeholders = validDeletedIds.map(() => '?').join(',');
+        await query(`DELETE FROM tasks WHERE id IN (${placeholders})`, validDeletedIds);
+        deletedTaskIds = deletedTaskIds.concat(validDeletedIds);
+        validDeletedIds.forEach(taskId => existingTaskMap.delete(taskId));
+        if (validDeletedIds.length > 0) {
+          const validDeletedSet = new Set(validDeletedIds);
+          existingTasks = existingTasks.filter(task => !validDeletedSet.has(task.id));
+        }
       }
-      
-      // Update or insert tasks
-      for (const task of tasks) {
-        // Format completed_at for MySQL (YYYY-MM-DD HH:MM:SS)
+    }
+
+    if (Array.isArray(tasks)) {
+      const existingTaskIds = existingTasks.map(t => t.id);
+      const taskList = isPartialTaskUpdate
+        ? tasks.filter(task => !task.id || changedTaskIdSet.has(task.id))
+        : tasks;
+
+      if (!isPartialTaskUpdate) {
+        const newTaskIds = taskList.map(t => t.id).filter(Boolean);
+        const tasksToDelete = existingTaskIds.filter(tid => !newTaskIds.includes(tid));
+        if (tasksToDelete.length > 0) {
+          const placeholders = tasksToDelete.map(() => '?').join(',');
+          await query(`DELETE FROM tasks WHERE id IN (${placeholders})`, tasksToDelete);
+          deletedTaskIds = deletedTaskIds.concat(tasksToDelete);
+          const tasksToDeleteSet = new Set(tasksToDelete);
+          tasksToDelete.forEach(taskId => existingTaskMap.delete(taskId));
+          existingTasks = existingTasks.filter(task => !tasksToDeleteSet.has(task.id));
+        }
+      }
+
+      const needsUuid = taskList.some(task => !task.id);
+      let uuidv4;
+      if (needsUuid) {
+        ({ v4: uuidv4 } = await import('uuid'));
+      }
+
+      const formatDateTimeForMySQL = (value) => {
+        if (!value) return null;
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return null;
+        return date.toISOString().slice(0, 19).replace('T', ' ');
+      };
+
+      const normalizeForComparison = (taskRow) => {
+        if (!taskRow) return null;
+        return {
+          name: taskRow.name,
+          category: taskRow.category || null,
+          status: taskRow.status || 'Not Started',
+          required: Boolean(taskRow.required),
+          notes: taskRow.notes || null,
+          completed_at: taskRow.completed_at
+            ? (taskRow.completed_at instanceof Date
+                ? taskRow.completed_at.toISOString().slice(0, 19).replace('T', ' ')
+                : formatDateTimeForMySQL(taskRow.completed_at))
+            : null
+        };
+      };
+
+      for (const task of taskList) {
         let completedAt = null;
         if (task.status === 'Completed') {
-          if (task.completed_at) {
-            const date = new Date(task.completed_at);
-            completedAt = date.toISOString().slice(0, 19).replace('T', ' ');
-          } else {
-            const now = new Date();
-            completedAt = now.toISOString().slice(0, 19).replace('T', ' ');
-          }
+          completedAt = task.completed_at
+            ? formatDateTimeForMySQL(task.completed_at)
+            : new Date().toISOString().slice(0, 19).replace('T', ' ');
         }
 
-        if (task.id && existingTaskIds.includes(task.id)) {
-          // Update existing task with user tracking
-          try {
-            await query(
-              'UPDATE tasks SET name = ?, category = ?, status = ?, required = ?, notes = ?, completed_at = ?, updated_by_user_id = ?, updated_by_user_name = ?, updated_by_user_image = ? WHERE id = ?',
-              [
-                task.name,
-                task.category || null,
-                task.status || 'Not Started',
-                task.required || false,
-                task.notes || null,
-                completedAt,
-                session.user.id,
-                session.user.name || null,
-                session.user.image || null,
-                task.id
-              ]
-            );
-          } catch (dbError) {
-            // If user tracking columns don't exist, fall back to basic update
-            if (dbError.code === 'ER_BAD_FIELD_ERROR') {
-              console.log('User tracking columns not available, using basic update');
+        const normalizedIncoming = {
+          name: task.name,
+          category: task.category || null,
+          status: task.status || 'Not Started',
+          required: Boolean(task.required),
+          notes: task.notes || null,
+          completed_at: completedAt
+        };
+
+        if (task.id && existingTaskMap.has(task.id)) {
+          const existingTask = existingTaskMap.get(task.id);
+          const existingNormalized = normalizeForComparison(existingTask);
+
+          const needsUpdate = !existingNormalized ||
+            existingNormalized.name !== normalizedIncoming.name ||
+            existingNormalized.category !== normalizedIncoming.category ||
+            existingNormalized.status !== normalizedIncoming.status ||
+            existingNormalized.required !== normalizedIncoming.required ||
+            existingNormalized.notes !== normalizedIncoming.notes ||
+            existingNormalized.completed_at !== normalizedIncoming.completed_at;
+
+          if (needsUpdate) {
+            try {
               await query(
-                'UPDATE tasks SET name = ?, category = ?, status = ?, required = ?, notes = ?, completed_at = ? WHERE id = ?',
+                'UPDATE tasks SET name = ?, category = ?, status = ?, required = ?, notes = ?, completed_at = ?, updated_by_user_id = ?, updated_by_user_name = ?, updated_by_user_image = ? WHERE id = ?',
                 [
-                  task.name,
-                  task.category || null,
-                  task.status || 'Not Started',
-                  task.required || false,
-                  task.notes || null,
-                  completedAt,
+                  normalizedIncoming.name,
+                  normalizedIncoming.category,
+                  normalizedIncoming.status,
+                  normalizedIncoming.required,
+                  normalizedIncoming.notes,
+                  normalizedIncoming.completed_at,
+                  session.user.id,
+                  session.user.name || null,
+                  session.user.image || null,
                   task.id
                 ]
               );
-            } else {
-              throw dbError;
+            } catch (dbError) {
+              if (dbError.code === 'ER_BAD_FIELD_ERROR') {
+                console.log('User tracking columns not available, using basic update');
+                await query(
+                  'UPDATE tasks SET name = ?, category = ?, status = ?, required = ?, notes = ?, completed_at = ? WHERE id = ?',
+                  [
+                    normalizedIncoming.name,
+                    normalizedIncoming.category,
+                    normalizedIncoming.status,
+                    normalizedIncoming.required,
+                    normalizedIncoming.notes,
+                    normalizedIncoming.completed_at,
+                    task.id
+                  ]
+                );
+              } else {
+                throw dbError;
+              }
             }
+            updatedTaskIdSet.add(task.id);
           }
         } else {
-          // Insert new task with user tracking
-          const { v4: uuidv4 } = await import('uuid');
-          const taskId = task.id || uuidv4();
+          const taskId = task.id || (uuidv4 ? uuidv4() : task.id);
+          if (!taskId) {
+            continue;
+          }
+
           try {
             await query(
               'INSERT INTO tasks (id, project_id, name, category, status, required, notes, completed_at, updated_by_user_id, updated_by_user_name, updated_by_user_image) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
               [
                 taskId,
                 id,
-                task.name,
-                task.category || null,
-                task.status || 'Not Started',
-                task.required || false,
-                task.notes || null,
-                completedAt,
+                normalizedIncoming.name,
+                normalizedIncoming.category,
+                normalizedIncoming.status,
+                normalizedIncoming.required,
+                normalizedIncoming.notes,
+                normalizedIncoming.completed_at,
                 session.user.id,
                 session.user.name || null,
                 session.user.image || null
               ]
             );
           } catch (dbError) {
-            // If user tracking columns don't exist, fall back to basic insert
             if (dbError.code === 'ER_BAD_FIELD_ERROR') {
               console.log('User tracking columns not available, using basic insert');
               await query(
@@ -139,34 +233,67 @@ export async function PUT(request, { params }) {
                 [
                   taskId,
                   id,
-                  task.name,
-                  task.category || null,
-                  task.status || 'Not Started',
-                  task.required || false,
-                  task.notes || null,
-                  completedAt
+                  normalizedIncoming.name,
+                  normalizedIncoming.category,
+                  normalizedIncoming.status,
+                  normalizedIncoming.required,
+                  normalizedIncoming.notes,
+                  normalizedIncoming.completed_at
                 ]
               );
             } else {
               throw dbError;
             }
           }
+          updatedTaskIdSet.add(taskId);
         }
       }
     }
-    
-    // Return updated project with tasks
-    const updatedProject = await query('SELECT * FROM projects WHERE id = ?', [id]);
-    const updatedTasks = await query('SELECT * FROM tasks WHERE project_id = ?', [id]);
-    
+
+    const projectRows = await query('SELECT * FROM projects WHERE id = ?', [id]);
+    const projectRecord = projectRows[0];
+
+    let updatedTasks = [];
+    const updatedTaskIds = Array.from(updatedTaskIdSet);
+    let responseTaskIds = updatedTaskIds;
+
+    if (isPartialTaskUpdate && changedTaskIdSet.size > 0) {
+      const intersection = updatedTaskIds.filter(id => changedTaskIdSet.has(id));
+      if (intersection.length > 0) {
+        responseTaskIds = intersection;
+      }
+    }
+
+    if (responseTaskIds.length > 0) {
+      const placeholders = responseTaskIds.map(() => '?').join(',');
+      const rows = await query(`SELECT * FROM tasks WHERE id IN (${placeholders})`, responseTaskIds);
+      const rowMap = new Map(rows.map(row => [row.id, row]));
+      updatedTasks = responseTaskIds
+        .map(id => rowMap.get(id))
+        .filter(Boolean)
+        .map(task => ({
+          ...task,
+          required: Boolean(task.required),
+          completed_at: task.completed_at ? task.completed_at.toISOString() : null,
+          updated_at: task.updated_at ? task.updated_at.toISOString() : null
+        }));
+    }
+
     return NextResponse.json({
-      ...updatedProject[0],
-      target_date: updatedProject[0].target_date ? updatedProject[0].target_date.toISOString().split('T')[0] : '',
-      tasks: updatedTasks.map(task => ({
-        ...task,
-        required: Boolean(task.required),
-        completed_at: task.completed_at ? task.completed_at.toISOString() : null
-      }))
+      project: {
+        id: projectRecord.id,
+        user_id: projectRecord.user_id,
+        name: projectRecord.name,
+        description: projectRecord.description,
+        client: projectRecord.client,
+        target_date: projectRecord.target_date ? projectRecord.target_date.toISOString().split('T')[0] : '',
+        status: projectRecord.status,
+        updated_at: projectRecord.updated_at ? projectRecord.updated_at.toISOString() : null,
+        created_at: projectRecord.created_at ? projectRecord.created_at.toISOString() : null
+      },
+      updatedTasks,
+      deletedTaskIds: Array.from(new Set(deletedTaskIds)),
+      fullProject: false
     });
   } catch (error) {
     console.error('Error updating project:', error);

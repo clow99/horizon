@@ -1,5 +1,6 @@
 "use client";
-import { useState, memo } from 'react';
+import { useState, useRef, memo } from 'react';
+import { prepareProjectPayload } from '@/lib/client/prepareProjectPayload';
 
 const statusOptions = [
   { value: 'Not Started', label: 'Not Started', color: 'gray' },
@@ -19,7 +20,7 @@ const categoryColors = {
   'Deployment': 'bg-green-100 text-green-700 border-green-200'
 };
 
-function ProjectChecklist({ project, onUpdate, onDelete }) {
+function ProjectChecklist({ project, onUpdate, onDelete, onModalStateChange }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingField, setEditingField] = useState(null);
   const [tempValue, setTempValue] = useState('');
@@ -27,13 +28,23 @@ function ProjectChecklist({ project, onUpdate, onDelete }) {
   const [showNotesFor, setShowNotesFor] = useState(null);
   const [showAddTaskForm, setShowAddTaskForm] = useState(false);
   const [showMenuFor, setShowMenuFor] = useState(null); // Track which task's menu is open
+  const [optimisticTaskUpdates, setOptimisticTaskUpdates] = useState({}); // Track optimistic task status updates
+  const optimisticTaskUpdatesRef = useRef({});
+  const optimisticUpdateVersionRef = useRef({});
   const [newTask, setNewTask] = useState({
     name: '',
     description: '',
     category: 'Infrastructure',
-    required: false,
     status: 'Not Started'
   });
+
+  // Helper to update modal state and notify parent
+  const updateModalState = (isOpen) => {
+    setIsModalOpen(isOpen);
+    if (onModalStateChange) {
+      onModalStateChange(isOpen);
+    }
+  };
 
   const startEditing = (field, currentValue) => {
     setEditingField(field);
@@ -63,6 +74,7 @@ function ProjectChecklist({ project, onUpdate, onDelete }) {
     const taskToAdd = {
       id: `custom-${Date.now()}`,
       ...newTask,
+      required: false,
       notes: ''
     };
     
@@ -76,8 +88,7 @@ function ProjectChecklist({ project, onUpdate, onDelete }) {
       name: '',
       description: '',
       category: 'Infrastructure',
-      required: false,
-      status: 'not-started'
+      status: 'Not Started'
     });
     setShowAddTaskForm(false);
   };
@@ -92,27 +103,157 @@ function ProjectChecklist({ project, onUpdate, onDelete }) {
     }
   };
 
-  const updateTask = (taskId, updates) => {
-    // Use functional update to always work with latest project state
-    onUpdate((currentProject) => ({
-      ...currentProject,
-      tasks: currentProject.tasks.map(task =>
-        task.id === taskId ? { ...task, ...updates } : task
-      )
-    }));
+  const updateTask = async (taskId, updates, options = {}) => {
+    const useTaskEndpoint = options.useTaskEndpoint === true;
+    const currentVersion = (optimisticUpdateVersionRef.current[taskId] || 0) + 1;
+    optimisticUpdateVersionRef.current[taskId] = currentVersion;
+
+    const nextOptimisticUpdates = {
+      ...optimisticTaskUpdatesRef.current,
+      [taskId]: { ...updates }
+    };
+
+    optimisticTaskUpdatesRef.current = nextOptimisticUpdates;
+    setOptimisticTaskUpdates(nextOptimisticUpdates);
+
+    const updatedTasks = project.tasks.map(task => {
+      const optimisticUpdate = nextOptimisticUpdates[task.id];
+      if (optimisticUpdate) {
+        return { ...task, ...optimisticUpdate };
+      }
+      return task;
+    });
+
+    const targetTask = updatedTasks.find(task => task.id === taskId);
+    const persistedTaskId = targetTask?.id && !String(targetTask.id).startsWith("custom-");
+
+    const updatedProject = {
+      ...project,
+      tasks: updatedTasks,
+    };
+
+    if (updatedProject.changedTaskIds) {
+      delete updatedProject.changedTaskIds;
+    }
+    if (updatedProject.__taskUpdate) {
+      delete updatedProject.__taskUpdate;
+    }
+
+    if (targetTask?.id) {
+      if (useTaskEndpoint && persistedTaskId) {
+        updatedProject.__taskUpdate = {
+          taskId: targetTask.id,
+          updates: { ...updates },
+        };
+      } else {
+        updatedProject.changedTaskIds = [targetTask.id];
+      }
+    }
+
+    try {
+      let serverUpdate;
+
+      if (useTaskEndpoint && persistedTaskId && targetTask?.id) {
+        const response = await fetch(`/api/projects/${project.id}/tasks/${targetTask.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(updates),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error("Server error:", errorText);
+          throw new Error("Failed to update task status");
+        }
+
+        serverUpdate = await response.json();
+      } else {
+        const payload = prepareProjectPayload(updatedProject);
+        const response = await fetch(`/api/projects/${project.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+
+        if (!response.ok) {
+          throw new Error("Failed to update task");
+        }
+
+        serverUpdate = await response.json();
+      }
+
+      // Filter out stale task updates that have newer optimistic versions pending
+      let filteredUpdate = serverUpdate;
+      if (Array.isArray(serverUpdate?.updatedTasks)) {
+        const filteredTasks = serverUpdate.updatedTasks.filter((task) => {
+          if (!task?.id) return true;
+          const pendingVersion = optimisticUpdateVersionRef.current[task.id];
+          return pendingVersion === undefined || pendingVersion <= currentVersion;
+        });
+
+        if (filteredTasks.length !== serverUpdate.updatedTasks.length) {
+          filteredUpdate = { ...serverUpdate, updatedTasks: filteredTasks };
+        }
+
+        if (filteredTasks.length === 0) {
+          filteredUpdate = { ...filteredUpdate };
+          delete filteredUpdate.updatedTasks;
+        }
+      }
+
+      // Clear optimistic update for this specific task only if it's still the latest version
+      if (optimisticUpdateVersionRef.current[taskId] === currentVersion) {
+        const remaining = { ...optimisticTaskUpdatesRef.current };
+        delete remaining[taskId];
+        optimisticTaskUpdatesRef.current = remaining;
+        delete optimisticUpdateVersionRef.current[taskId];
+        setOptimisticTaskUpdates(remaining);
+      }
+
+      const hasTaskUpdates = Array.isArray(filteredUpdate?.updatedTasks) && filteredUpdate.updatedTasks.length > 0;
+      const hasDeletedTasks = Array.isArray(filteredUpdate?.deletedTaskIds) && filteredUpdate.deletedTaskIds.length > 0;
+      const hasProjectUpdate = filteredUpdate?.project && Object.keys(filteredUpdate.project).length > 0;
+
+      if (hasTaskUpdates || hasDeletedTasks || hasProjectUpdate) {
+        // Update parent state with server response
+  onUpdate(filteredUpdate);
+      }
+    } catch (error) {
+      console.error("Error updating task:", error);
+      // Rollback optimistic update on error if still current
+      if (optimisticUpdateVersionRef.current[taskId] === currentVersion) {
+        const remaining = { ...optimisticTaskUpdatesRef.current };
+        delete remaining[taskId];
+        optimisticTaskUpdatesRef.current = remaining;
+        delete optimisticUpdateVersionRef.current[taskId];
+        setOptimisticTaskUpdates(remaining);
+      }
+      // Could show a toast notification here
+    }
   };
 
-  const completedTasks = project.tasks.filter(t => t.status === 'Completed').length;
-  const totalTasks = project.tasks.length;
-  const requiredTasks = project.tasks.filter(t => t.required);
-  const completedRequired = requiredTasks.filter(t => t.status === 'Completed').length;
-  const progressPercentage = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0;
-  const isReadyToDeploy = requiredTasks.length > 0 && requiredTasks.length === completedRequired.length;
+  // Helper to get task with optimistic updates applied
+  const getTaskWithOptimisticUpdate = (task) => {
+    if (optimisticTaskUpdates[task.id]) {
+      return { ...task, ...optimisticTaskUpdates[task.id] };
+    }
+    return task;
+  };
 
-  const categories = [...new Set(project.tasks.map(t => t.category))];
+  // Apply optimistic updates to all tasks for rendering
+  const tasksWithOptimisticUpdates = project.tasks.map(getTaskWithOptimisticUpdate);
+
+  const completedTasks = tasksWithOptimisticUpdates.filter(t => t.status === 'Completed').length;
+  const blockedTasks = tasksWithOptimisticUpdates.filter(t => t.status === 'Blocked').length;
+  const totalTasks = tasksWithOptimisticUpdates.length;
+  // Count completed + blocked as "done" for percentage calculation
+  const doneTasks = completedTasks + blockedTasks;
+  const progressPercentage = totalTasks > 0 ? (doneTasks / totalTasks) * 100 : 0;
+
+  const categories = [...new Set(tasksWithOptimisticUpdates.map(t => t.category))];
   const filteredTasks = selectedCategory === 'all' 
-    ? project.tasks 
-    : project.tasks.filter(t => t.category === selectedCategory);
+    ? tasksWithOptimisticUpdates 
+    : tasksWithOptimisticUpdates.filter(t => t.category === selectedCategory);
 
   const getDaysUntilTarget = () => {
     if (!project.target_date) return null;
@@ -129,7 +270,7 @@ function ProjectChecklist({ project, onUpdate, onDelete }) {
     <>
       {/* Project Card - Clickable to open modal */}
       <div 
-        onClick={() => setIsModalOpen(true)}
+        onClick={() => updateModalState(true)}
         className="bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden hover:shadow-lg transition-all duration-300 cursor-pointer hover:scale-[1.02]"
       >
         {/* Project Header */}
@@ -163,7 +304,10 @@ function ProjectChecklist({ project, onUpdate, onDelete }) {
                     placeholder="Project Name"
                   />
                   <button
-                    onClick={() => finishEditing('name')}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      finishEditing('name');
+                    }}
                     className="bg-green-500 hover:bg-green-600 text-white p-2 rounded-lg transition-colors"
                     title="Save"
                   >
@@ -172,7 +316,10 @@ function ProjectChecklist({ project, onUpdate, onDelete }) {
                     </svg>
                   </button>
                   <button
-                    onClick={cancelEditing}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      cancelEditing();
+                    }}
                     className="bg-gray-500 hover:bg-gray-600 text-white p-2 rounded-lg transition-colors"
                     title="Cancel"
                   >
@@ -218,7 +365,10 @@ function ProjectChecklist({ project, onUpdate, onDelete }) {
                     placeholder="Project description"
                   />
                   <button
-                    onClick={() => finishEditing('description')}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      finishEditing('description');
+                    }}
                     className="bg-green-500 hover:bg-green-600 text-white p-1.5 rounded transition-colors"
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -226,7 +376,10 @@ function ProjectChecklist({ project, onUpdate, onDelete }) {
                     </svg>
                   </button>
                   <button
-                    onClick={cancelEditing}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      cancelEditing();
+                    }}
                     className="bg-gray-500 hover:bg-gray-600 text-white p-1.5 rounded transition-colors"
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -272,13 +425,19 @@ function ProjectChecklist({ project, onUpdate, onDelete }) {
                       placeholder="Client name"
                     />
                     <button
-                      onClick={() => finishEditing('client')}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        finishEditing('client');
+                      }}
                       className="bg-green-500 hover:bg-green-600 text-white p-1 rounded text-xs"
                     >
                       ✓
                     </button>
                     <button
-                      onClick={cancelEditing}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        cancelEditing();
+                      }}
                       className="bg-gray-500 hover:bg-gray-600 text-white p-1 rounded text-xs"
                     >
                       ✕
@@ -321,13 +480,19 @@ function ProjectChecklist({ project, onUpdate, onDelete }) {
                       autoFocus
                     />
                     <button
-                      onClick={() => finishEditing('target_date')}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        finishEditing('target_date');
+                      }}
                       className="bg-green-500 hover:bg-green-600 text-white p-1 rounded text-xs"
                     >
                       ✓
                     </button>
                     <button
-                      onClick={cancelEditing}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        cancelEditing();
+                      }}
                       className="bg-gray-500 hover:bg-gray-600 text-white p-1 rounded text-xs"
                     >
                       ✕
@@ -376,16 +541,6 @@ function ProjectChecklist({ project, onUpdate, onDelete }) {
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            {isReadyToDeploy && (
-              <div className="bg-green-500 text-white px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 animate-pulse">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                Ready to Deploy
-              </div>
-            )}
-          </div>
         </div>
 
         {/* Progress Section */}
@@ -394,6 +549,11 @@ function ProjectChecklist({ project, onUpdate, onDelete }) {
             <span className="text-gray-300">Overall Progress</span>
             <span className="text-white font-semibold">
               {completedTasks} / {totalTasks} tasks ({Math.round(progressPercentage)}%)
+              {blockedTasks > 0 && (
+                <span className="text-red-400 ml-2">
+                  ({blockedTasks} blocked)
+                </span>
+              )}
             </span>
           </div>
           <div className="bg-slate-700 rounded-full h-3 overflow-hidden">
@@ -401,12 +561,6 @@ function ProjectChecklist({ project, onUpdate, onDelete }) {
               className="bg-gradient-to-r from-green-400 to-emerald-500 h-full transition-all duration-500 ease-out rounded-full"
               style={{ width: `${progressPercentage}%` }}
             />
-          </div>
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-gray-300">Required Tasks</span>
-            <span className={`font-semibold ${isReadyToDeploy ? 'text-green-400' : 'text-yellow-400'}`}>
-              {completedRequired} / {requiredTasks.length} completed
-            </span>
           </div>
         </div>
       </div>
@@ -416,7 +570,7 @@ function ProjectChecklist({ project, onUpdate, onDelete }) {
       {isModalOpen && (
         <div 
           className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
-          onClick={() => setIsModalOpen(false)}
+          onClick={() => updateModalState(false)}
         >
           <div 
             className="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden"
@@ -431,7 +585,7 @@ function ProjectChecklist({ project, onUpdate, onDelete }) {
                     onClick={(e) => {
                       e.stopPropagation();
                       onDelete();
-                      setIsModalOpen(false);
+                      updateModalState(false);
                     }}
                     className="text-white hover:bg-red-500 rounded-lg p-2 transition-colors"
                     title="Delete Project"
@@ -441,7 +595,7 @@ function ProjectChecklist({ project, onUpdate, onDelete }) {
                     </svg>
                   </button>
                   <button
-                    onClick={() => setIsModalOpen(false)}
+                    onClick={() => updateModalState(false)}
                     className="text-white hover:bg-slate-700 rounded-lg p-2 transition-colors"
                     title="Close"
                   >
@@ -527,19 +681,6 @@ function ProjectChecklist({ project, onUpdate, onDelete }) {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    id="required-task"
-                    checked={newTask.required}
-                    onChange={(e) => setNewTask({...newTask, required: e.target.checked})}
-                    className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500 accent-blue-600"
-                  />
-                  <label htmlFor="required-task" className="text-xs font-medium text-gray-700">
-                    Mark as required for deployment
-                  </label>
-                </div>
-
                 <div className="flex gap-2 pt-1">
                   <button
                     onClick={() => setShowAddTaskForm(false)}
@@ -569,10 +710,10 @@ function ProjectChecklist({ project, onUpdate, onDelete }) {
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
               }`}
             >
-              All Tasks ({project.tasks.length})
+              All Tasks ({tasksWithOptimisticUpdates.length})
             </button>
             {categories.map(category => {
-              const count = project.tasks.filter(t => t.category === category).length;
+              const count = tasksWithOptimisticUpdates.filter(t => t.category === category).length;
               return (
                 <button
                   key={category}
@@ -620,40 +761,76 @@ function ProjectChecklist({ project, onUpdate, onDelete }) {
                 >
                   {/* Left Column: Checkbox and Info Icon */}
                   <div className="flex flex-col items-center gap-1 flex-shrink-0">
-                    {/* Checkbox */}
-                    <input
-                      type="checkbox"
-                      checked={task.status === 'Completed'}
-                      onChange={(e) => updateTask(task.id, { 
-                        status: e.target.checked ? 'Completed' : 'Not Started'
-                      })}
-                      className="w-5 h-5 text-blue-600 rounded-md focus:ring-2 focus:ring-blue-500 cursor-pointer accent-blue-600"
-                    />
-                    
-                    {/* User Info Icon - Shows who last updated */}
-                    {task.updated_by_user_name && (
-                      <div className="relative [&>svg:hover+div]:block">
-                        <svg 
-                          className="w-3.5 h-3.5 text-gray-400 hover:text-blue-600 transition-colors cursor-help" 
-                          fill="none" 
-                          stroke="currentColor" 
-                          viewBox="0 0 24 24"
-                        >
-                          <path 
-                            strokeLinecap="round" 
-                            strokeLinejoin="round" 
-                            strokeWidth={2} 
-                            d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" 
-                          />
-                        </svg>
-                        {/* Tooltip - only shows on icon hover */}
-                        <div className="absolute left-0 top-5 hidden z-50 whitespace-nowrap pointer-events-none">
-                          <div className="bg-gray-900 text-white text-xs rounded py-1 px-2 shadow-lg">
-                            {task.updated_by_user_name}
-                          </div>
-                        </div>
+                    {/* Custom Styled Checkbox */}
+                    <label className="cursor-pointer group/checkbox relative">
+                      <input
+                        type="checkbox"
+                        checked={task.status === 'Completed'}
+                        readOnly
+                        disabled={task.status === 'Blocked'}
+                        className="sr-only peer"
+                      />
+                      <div
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          // Prevent checking/unchecking if blocked
+                          if (task.status !== 'Blocked') {
+                            const isCompleted = task.status !== 'Completed';
+                            updateTask(
+                              task.id,
+                              {
+                                status: isCompleted ? 'Completed' : 'Not Started',
+                                completed_at: isCompleted ? new Date().toISOString() : null,
+                              },
+                              { useTaskEndpoint: true }
+                            );
+                          }
+                        }}
+                        className={`w-5 h-5 border-2 rounded flex items-center justify-center transition-all ${
+                          task.status === 'Completed'
+                            ? 'bg-blue-600 border-blue-600'
+                            : task.status === 'Blocked'
+                            ? 'bg-red-100 border-red-300 cursor-not-allowed'
+                            : 'bg-white border-gray-300 hover:border-blue-500'
+                        } ${
+                          task.status === 'Blocked'
+                            ? 'cursor-not-allowed'
+                            : 'cursor-pointer'
+                        }`}
+                      >
+                        {task.status === 'Completed' && (
+                          <svg
+                            className="w-3.5 h-3.5 text-white"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={3}
+                              d="M5 13l4 4L19 7"
+                            />
+                          </svg>
+                        )}
+                        {task.status === 'Blocked' && (
+                          <svg
+                            className="w-3.5 h-3.5 text-red-500"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2.5}
+                              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                            />
+                          </svg>
+                        )}
                       </div>
-                    )}
+                    </label>
+                    
                   </div>
 
                   {/* Task Info */}
@@ -674,14 +851,19 @@ function ProjectChecklist({ project, onUpdate, onDelete }) {
                   {/* Status Dropdown */}
                   <select
                     value={task.status}
-                    onChange={(e) => updateTask(task.id, { status: e.target.value })}
+                    onChange={(e) => {
+                      const nextStatus = e.target.value;
+                      const statusUpdates = { status: nextStatus };
+                      statusUpdates.completed_at = nextStatus === 'Completed' ? new Date().toISOString() : null;
+                      updateTask(task.id, statusUpdates, { useTaskEndpoint: true });
+                    }}
                     className={`px-2.5 py-1.5 rounded-lg border focus:outline-none focus:ring-2 focus:ring-blue-400 font-medium text-xs min-w-[120px] flex-shrink-0 ${
-                      task.status === 'completed'
+                      task.status === 'Completed'
                         ? 'bg-green-100 border-green-300 text-green-800'
-                        : task.status === 'in-progress'
+                        : task.status === 'In Progress'
                         ? 'bg-blue-100 border-blue-300 text-blue-800'
-                        : task.status === 'blocked'
-                        ? 'bg-indigo-100 border-indigo-300 text-indigo-800'
+                        : task.status === 'Blocked'
+                        ? 'bg-red-100 border-red-300 text-red-800'
                         : 'bg-gray-100 border-gray-300 text-gray-800'
                     }`}
                   >

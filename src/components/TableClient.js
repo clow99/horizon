@@ -1,19 +1,19 @@
 "use client";
 import { useState, useRef, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
 import TableView from '@/components/TableView';
 import Toast from '@/components/Toast';
+import { mergeProjectUpdate } from '@/lib/client/mergeProjectUpdate';
+import { prepareProjectPayload } from '@/lib/client/prepareProjectPayload';
 
 export default function TableClient({ initialProjects, session }) {
-  const router = useRouter();
   const [projects, setProjects] = useState(initialProjects);
   const [toasts, setToasts] = useState([]);
 
   // Toast notification helper
-  const showToast = (message, type = 'error') => {
+  const showToast = useCallback((message, type = 'error') => {
     const id = Date.now();
     setToasts(prev => [...prev, { id, message, type }]);
-  };
+  }, []);
 
   const removeToast = (id) => {
     setToasts(prev => prev.filter(t => t.id !== id));
@@ -28,6 +28,7 @@ export default function TableClient({ initialProjects, session }) {
     // ALWAYS do optimistic update IMMEDIATELY (before waiting for any pending updates)
     // This makes the UI feel instant
     let updatedProject;
+    let taskUpdateMeta;
     
     if (typeof updatedProjectOrFunction === 'function') {
       // Use functional update with latest state
@@ -40,12 +41,28 @@ export default function TableClient({ initialProjects, session }) {
         
         updatedProject = updatedProjectOrFunction(currentProject);
         console.log('Functional update created:', updatedProject);
+
+        if (updatedProject?.__taskUpdate) {
+          taskUpdateMeta = updatedProject.__taskUpdate;
+          delete updatedProject.__taskUpdate;
+          if (updatedProject.changedTaskIds) {
+            delete updatedProject.changedTaskIds;
+          }
+        }
         return prevProjects.map(p => p.id === projectId ? updatedProject : p);
       });
     } else {
       // Direct object update
       updatedProject = updatedProjectOrFunction;
       console.log('Direct object update - applying optimistically:', updatedProject);
+
+      if (updatedProject?.__taskUpdate) {
+        taskUpdateMeta = updatedProject.__taskUpdate;
+        delete updatedProject.__taskUpdate;
+        if (updatedProject.changedTaskIds) {
+          delete updatedProject.changedTaskIds;
+        }
+      }
       
       // Optimistic UI update (IMMEDIATE)
       setProjects(prevProjects =>
@@ -72,14 +89,27 @@ export default function TableClient({ initialProjects, session }) {
     // Create a promise for this update
     const updatePromise = (async () => {
       try {
-        console.log('Making API call to:', `/api/projects/${projectId}`);
-        console.log('Sending project data:', JSON.stringify(updatedProject, null, 2));
-        
-        const response = await fetch(`/api/projects/${projectId}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(updatedProject)
-        });
+        let response;
+        let payload;
+
+        if (taskUpdateMeta?.taskId) {
+          console.log('Making task-specific API call to:', `/api/projects/${projectId}/tasks/${taskUpdateMeta.taskId}`);
+          response = await fetch(`/api/projects/${projectId}/tasks/${taskUpdateMeta.taskId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(taskUpdateMeta.updates || {})
+          });
+        } else {
+          console.log('Making API call to:', `/api/projects/${projectId}`);
+          console.log('Sending project data:', JSON.stringify(updatedProject, null, 2));
+          payload = prepareProjectPayload(updatedProject);
+
+          response = await fetch(`/api/projects/${projectId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+        }
 
         console.log('API response status:', response.status);
         console.log('API response headers:', response.headers);
@@ -116,9 +146,11 @@ export default function TableClient({ initialProjects, session }) {
         }
         console.log('API response data:', updated);
         
-        // Don't update state with server response - the optimistic update is sufficient
-        // This prevents page state changes/reordering when checkboxes are clicked
-        // Only rollback on error (handled in catch block)
+        setProjects(prevProjects =>
+          prevProjects.map(project =>
+            project.id === projectId ? mergeProjectUpdate(project, updated) : project
+          )
+        );
       } catch (e) {
         console.error('=== ERROR IN UPDATE PROJECT ===');
         console.error('Error type:', e.constructor.name);
@@ -139,17 +171,7 @@ export default function TableClient({ initialProjects, session }) {
     projectUpdates.current.set(projectId, updatePromise);
 
     return updatePromise;
-  }, []);
-
-  const reorderProjects = useCallback((newProjects) => {
-    console.log('TableClient.reorderProjects called:', newProjects);
-    // Update state with new order
-    setProjects(newProjects);
-    
-    // Save the new order to the server
-    const projectIds = newProjects.map(p => p.id);
-    saveProjectOrder(projectIds);
-  }, []);
+  }, [showToast]);
 
   const saveProjectOrder = useCallback(async (projectIds) => {
     try {
@@ -168,7 +190,17 @@ export default function TableClient({ initialProjects, session }) {
       console.error('Error saving project order:', error);
       showToast('Failed to save project order. Changes may not persist.', 'error');
     }
-  }, []);
+  }, [showToast]);
+
+  const reorderProjects = useCallback((newProjects) => {
+    console.log('TableClient.reorderProjects called:', newProjects);
+    // Update state with new order
+    setProjects(newProjects);
+    
+    // Save the new order to the server
+    const projectIds = newProjects.map(p => p.id);
+    saveProjectOrder(projectIds);
+  }, [saveProjectOrder]);
 
   return (
     <>

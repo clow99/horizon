@@ -1,5 +1,6 @@
 "use client";
 import { useState, useMemo, useEffect, useRef, memo } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { signOut } from "next-auth/react";
 
@@ -9,6 +10,77 @@ const statusOptions = [
   { value: "Completed", label: "Completed", color: "green" },
   { value: "Blocked", label: "Blocked", color: "red" },
 ];
+
+const categoryColors = {
+  'Infrastructure': 'bg-blue-100 text-blue-700 border-blue-200',
+  'Security': 'bg-red-100 text-red-700 border-red-200',
+  'Monitoring': 'bg-purple-100 text-purple-700 border-purple-200',
+  'DevOps': 'bg-indigo-100 text-indigo-700 border-indigo-200',
+  'Testing': 'bg-yellow-100 text-yellow-700 border-yellow-200',
+  'Marketing': 'bg-pink-100 text-pink-700 border-pink-200',
+  'Legal': 'bg-orange-100 text-orange-700 border-orange-200',
+  'Deployment': 'bg-green-100 text-green-700 border-green-200'
+};
+
+// Get darker header colors based on category
+const getCategoryHeaderColor = (category) => {
+  const colorMap = {
+    'Infrastructure': 'bg-blue-600',
+    'Security': 'bg-red-600',
+    'Monitoring': 'bg-purple-600',
+    'DevOps': 'bg-indigo-600',
+    'Testing': 'bg-yellow-600',
+    'Marketing': 'bg-pink-600',
+    'Legal': 'bg-orange-600',
+    'Deployment': 'bg-green-600'
+  };
+  return colorMap[category] || 'bg-indigo-600';
+};
+
+// Get active filter button colors based on category
+const getCategoryActiveColors = (category) => {
+  const colorMap = {
+    'Infrastructure': 'bg-blue-600 text-white shadow-md ring-2 ring-blue-200',
+    'Security': 'bg-red-600 text-white shadow-md ring-2 ring-red-200',
+    'Monitoring': 'bg-purple-600 text-white shadow-md ring-2 ring-purple-200',
+    'DevOps': 'bg-indigo-600 text-white shadow-md ring-2 ring-indigo-200',
+    'Testing': 'bg-yellow-600 text-white shadow-md ring-2 ring-yellow-200',
+    'Marketing': 'bg-pink-600 text-white shadow-md ring-2 ring-pink-200',
+    'Legal': 'bg-orange-600 text-white shadow-md ring-2 ring-orange-200',
+    'Deployment': 'bg-green-600 text-white shadow-md ring-2 ring-green-200'
+  };
+  return colorMap[category] || 'bg-blue-600 text-white shadow-md ring-2 ring-blue-200';
+};
+
+// Get hover colors for filter buttons based on category
+const getCategoryHoverColors = (category) => {
+  const colorMap = {
+    'Infrastructure': 'hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700',
+    'Security': 'hover:border-red-300 hover:bg-red-50 hover:text-red-700',
+    'Monitoring': 'hover:border-purple-300 hover:bg-purple-50 hover:text-purple-700',
+    'DevOps': 'hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700',
+    'Testing': 'hover:border-yellow-300 hover:bg-yellow-50 hover:text-yellow-700',
+    'Marketing': 'hover:border-pink-300 hover:bg-pink-50 hover:text-pink-700',
+    'Legal': 'hover:border-orange-300 hover:bg-orange-50 hover:text-orange-700',
+    'Deployment': 'hover:border-green-300 hover:bg-green-50 hover:text-green-700'
+  };
+  return colorMap[category] || 'hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700';
+};
+
+// Get badge background color for active filter buttons
+const getCategoryBadgeColor = (category) => {
+  const colorMap = {
+    'Infrastructure': 'bg-blue-500',
+    'Security': 'bg-red-500',
+    'Monitoring': 'bg-purple-500',
+    'DevOps': 'bg-indigo-500',
+    'Testing': 'bg-yellow-500',
+    'Marketing': 'bg-pink-500',
+    'Legal': 'bg-orange-500',
+    'Deployment': 'bg-green-500'
+  };
+  return colorMap[category] || 'bg-blue-500';
+};
 
 function TableView({
   projects,
@@ -31,12 +103,8 @@ function TableView({
   const projectRefs = useRef({});
   const updateQueueRef = useRef(Promise.resolve()); // Queue for local updates
   const [showProfileMenu, setShowProfileMenu] = useState(false);
-
-  // Pagination state - Always default to "All" projects
   const [currentPage, setCurrentPage] = useState(0);
-  const [projectsPerPage, setProjectsPerPage] = useState(
-    projects.length || 999
-  );
+  const [projectsPerPage, setProjectsPerPage] = useState(6);
   const [isClient, setIsClient] = useState(false);
 
   // Set isClient flag on mount
@@ -44,18 +112,11 @@ function TableView({
     setIsClient(true);
   }, []);
 
-  // Update projectsPerPage when projects changes (for "All" option)
-  useEffect(() => {
-    if (projectsPerPage === projects.length || projectsPerPage >= 999) {
-      // If user had "All" selected, keep it as "All" with new count
-      setProjectsPerPage(projects.length || 999);
-    }
-  }, [projects.length]);
-
   // Calculate pagination
-  const totalPages = Math.ceil(projects.length / projectsPerPage);
-  const startIndex = currentPage * projectsPerPage;
-  const endIndex = startIndex + projectsPerPage;
+  const effectiveProjectsPerPage = Math.min(projectsPerPage, 6);
+  const totalPages = Math.ceil(projects.length / effectiveProjectsPerPage);
+  const startIndex = currentPage * effectiveProjectsPerPage;
+  const endIndex = startIndex + effectiveProjectsPerPage;
   const paginatedProjects = projects.slice(startIndex, endIndex);
 
   // Reset to first page if current page is out of bounds
@@ -171,12 +232,14 @@ function TableView({
   };
 
   // Update task in project
-  const updateTaskInProject = async (projectId, taskName, updates) => {
+  const updateTaskInProject = async (projectId, taskName, updates, options = {}) => {
     console.log("updateTaskInProject called:", {
       projectId,
       taskName,
       updates,
     });
+
+    const useTaskEndpoint = options.useTaskEndpoint === true;
 
     // Create unique key for this task update
     const taskKey = `${projectId}-${taskName}`;
@@ -196,7 +259,31 @@ function TableView({
           task.name === taskName ? { ...task, ...updates } : task
         );
 
-        const updatedProject = { ...currentProject, tasks: updatedTasks };
+        const changedTask = updatedTasks.find((task) => task.name === taskName);
+        const updatedProject = {
+          ...currentProject,
+          tasks: updatedTasks,
+        };
+
+        if (updatedProject.changedTaskIds) {
+          delete updatedProject.changedTaskIds;
+        }
+        if (updatedProject.__taskUpdate) {
+          delete updatedProject.__taskUpdate;
+        }
+
+        const persistedTaskId = changedTask?.id && !String(changedTask.id).startsWith("custom-");
+
+        if (changedTask?.id) {
+          if (useTaskEndpoint && persistedTaskId) {
+            updatedProject.__taskUpdate = {
+              taskId: changedTask.id,
+              updates: { ...updates },
+            };
+          } else {
+            updatedProject.changedTaskIds = [changedTask.id];
+          }
+        }
         console.log("Created updatedProject:", updatedProject);
 
         return updatedProject;
@@ -273,29 +360,6 @@ function TableView({
         newSet.delete(taskKey);
         return newSet;
       });
-    }
-  };
-
-  // Add task to ALL projects that are missing it
-  const addTaskToAllProjects = async (taskTemplate) => {
-    // Find all projects that don't have this task
-    const projectsMissingTask = projects.filter(
-      (project) =>
-        !project.tasks.some((task) => task.name === taskTemplate.name)
-    );
-
-    if (projectsMissingTask.length === 0) {
-      console.log("All projects already have this task");
-      return;
-    }
-
-    console.log(
-      `Adding "${taskTemplate.name}" to ${projectsMissingTask.length} projects`
-    );
-
-    // Add task to each project sequentially to avoid race conditions
-    for (const project of projectsMissingTask) {
-      await addMissingTask(project.id, taskTemplate);
     }
   };
 
@@ -578,7 +642,7 @@ function TableView({
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
       {/* Professional Header (matches Landing Page) */}
       <header className="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-50">
-        <div className="mx-auto px-6 py-4">
+        <div className="mx-auto px-6 pt-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-6">
               <div className="flex items-center gap-3">
@@ -661,7 +725,11 @@ function TableView({
 
               {/* Pagination Controls */}
               <div className="flex items-center gap-2 bg-gray-50 px-3 py-2 rounded-lg border border-gray-200">
+                <label htmlFor="projectsPerPage" className="text-xs font-medium text-gray-700 whitespace-nowrap">
+                  Projects per page:
+                </label>
                 <select
+                  id="projectsPerPage"
                   value={projectsPerPage}
                   onChange={(e) => {
                     setProjectsPerPage(Number(e.target.value));
@@ -672,8 +740,6 @@ function TableView({
                   <option value="2">2</option>
                   <option value="4">4</option>
                   <option value="6">6</option>
-                  <option value="8">8</option>
-                  <option value={projects.length}>All</option>
                 </select>
 
                 {totalPages > 1 && (
@@ -737,9 +803,12 @@ function TableView({
                     className="flex items-center gap-3 bg-gray-50 px-4 py-2 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors"
                   >
                     {session.user.image && (
-                      <img
+                      <Image
                         src={session.user.image}
-                        alt={session.user.name}
+                        alt={session.user.name || "User avatar"}
+                        width={32}
+                        height={32}
+                        unoptimized
                         className="w-8 h-8 rounded-full border-2 border-blue-500 shadow-md"
                       />
                     )}
@@ -852,8 +921,10 @@ function TableView({
                             onClick={() => setSelectedCategory(category)}
                             className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
                               isActive
-                                ? "bg-blue-600 text-white shadow-md ring-2 ring-blue-200 scale-105"
-                                : "bg-white text-gray-700 border-2 border-gray-200 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
+                                ? category === "all"
+                                  ? "bg-blue-600 text-white shadow-md ring-2 ring-blue-200 scale-105"
+                                  : `${getCategoryActiveColors(category)} scale-105`
+                                : `bg-white text-gray-700 border-2 border-gray-200 ${category === "all" ? "hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700" : getCategoryHoverColors(category)}`
                             }`}
                           >
                             <span>
@@ -862,7 +933,7 @@ function TableView({
                             <span
                               className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
                                 isActive
-                                  ? "bg-blue-500 text-white"
+                                  ? `${category === "all" ? "bg-blue-500" : getCategoryBadgeColor(category)} text-white`
                                   : "bg-gray-100 text-gray-600"
                               }`}
                             >
@@ -941,7 +1012,7 @@ function TableView({
           {groupedTasks.map((group, groupIdx) => (
             <div key={group.category}>
               {groupBy === "category" && (
-                <div className="bg-indigo-600 px-3 py-2 border-b">
+                <div className={`${getCategoryHeaderColor(group.category)} px-3 py-2 border-b`}>
                   <h2 className="text-sm font-bold text-white">
                     {group.category}
                   </h2>
@@ -1082,14 +1153,6 @@ function TableView({
                       const isEvenRow = idx % 2 === 0;
 
                       // Check if any projects are missing this task
-                      const projectsMissingTask = projects.filter(
-                        (project) =>
-                          !project.tasks.some(
-                            (task) => task.name === taskTemplate.name
-                          )
-                      );
-                      const hasMissingProjects = projectsMissingTask.length > 0;
-
                       return (
                         <tr
                           key={`${taskTemplate.name}-${idx}`}
@@ -1109,37 +1172,9 @@ function TableView({
                               {taskTemplate.description}
                             </div>
                             <div className="flex items-center gap-2 mt-1">
-                              <span className="inline-block text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-700">
+                              <span className={`inline-block text-xs px-1.5 py-0.5 rounded border font-medium ${categoryColors[taskTemplate.category] || 'bg-gray-100 text-gray-700 border-gray-200'}`}>
                                 {taskTemplate.category}
                               </span>
-                              {hasMissingProjects && (
-                                <button
-                                  onClick={() =>
-                                    addTaskToAllProjects(taskTemplate)
-                                  }
-                                  className="opacity-0 group-hover/row:opacity-100 transition-opacity inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded bg-blue-50 hover:bg-blue-100 text-blue-700 hover:text-blue-900 border border-blue-200 font-medium"
-                                  title={`Add to ${
-                                    projectsMissingTask.length
-                                  } project${
-                                    projectsMissingTask.length !== 1 ? "s" : ""
-                                  }`}
-                                >
-                                  <svg
-                                    className="w-3 h-3"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    viewBox="0 0 24 24"
-                                  >
-                                    <path
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      strokeWidth={2}
-                                      d="M12 6v6m0 0v6m0-6h6m-6 0H6"
-                                    />
-                                  </svg>
-                                  Add to {projectsMissingTask.length}
-                                </button>
-                              )}
                             </div>
                           </td>
 
@@ -1252,7 +1287,8 @@ function TableView({
                                                       completed_at: isCompleted
                                                         ? new Date().toISOString()
                                                         : null,
-                                                    }
+                                                    },
+                                                    { useTaskEndpoint: true }
                                                   );
                                                 }
                                               }}
@@ -1263,17 +1299,10 @@ function TableView({
                                                   ? "bg-red-100 border-red-300 cursor-not-allowed"
                                                   : "bg-white border-gray-300 hover:border-blue-500"
                                               } ${
-                                                isUpdating
-                                                  ? "opacity-50 cursor-not-allowed"
-                                                  : task.status === "Blocked"
+                                                isUpdating || task.status === "Blocked"
                                                   ? "cursor-not-allowed"
                                                   : "cursor-pointer"
                                               }`}
-                                              title={
-                                                task.status === "Blocked"
-                                                  ? "Cannot complete blocked tasks"
-                                                  : ""
-                                              }
                                             >
                                               {task.status === "Completed" && (
                                                 <svg
@@ -1314,30 +1343,6 @@ function TableView({
                                           </div>
                                         </label>
 
-                                        {/* User Info Icon - Shows who last updated */}
-                                        {task.updated_by_user_name && (
-                                          <div className="relative [&>svg:hover+div]:block">
-                                            <svg
-                                              className="w-3.5 h-3.5 text-gray-400 hover:text-blue-600 transition-colors cursor-help"
-                                              fill="none"
-                                              stroke="currentColor"
-                                              viewBox="0 0 24 24"
-                                            >
-                                              <path
-                                                strokeLinecap="round"
-                                                strokeLinejoin="round"
-                                                strokeWidth={2}
-                                                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                                              />
-                                            </svg>
-                                            {/* Tooltip - only shows on icon hover */}
-                                            <div className="absolute left-1/2 -translate-x-1/2 top-5 hidden z-50 whitespace-nowrap pointer-events-none">
-                                              <div className="bg-gray-900 text-white text-xs rounded py-1 px-2 shadow-lg">
-                                                {task.updated_by_user_name}
-                                              </div>
-                                            </div>
-                                          </div>
-                                        )}
                                       </div>
 
                                       {/* Right column: Status Dropdown */}
@@ -1345,15 +1350,18 @@ function TableView({
                                         {/* Status Dropdown */}
                                         <select
                                           value={task.status}
-                                          onChange={(e) =>
+                                          onChange={(e) => {
+                                            const nextStatus = e.target.value;
+                                            const statusUpdates = { status: nextStatus };
+                                            statusUpdates.completed_at = nextStatus === "Completed" ? new Date().toISOString() : null;
+
                                             updateTaskInProject(
                                               project.id,
                                               task.name,
-                                              {
-                                                status: e.target.value,
-                                              }
-                                            )
-                                          }
+                                              statusUpdates,
+                                              { useTaskEndpoint: true }
+                                            );
+                                          }}
                                           disabled={isUpdating}
                                           className={`w-full px-2 py-1 text-xs rounded border focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all ${
                                             task.status === "Completed"

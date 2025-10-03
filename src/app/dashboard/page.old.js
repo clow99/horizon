@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from 'react';
 import { useSession, signOut } from 'next-auth/react';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import ProjectChecklist from '@/components/ProjectChecklist';
 import Toast from '@/components/Toast';
@@ -366,9 +367,12 @@ export default function DashboardPage() {
               {session?.user && (
                 <div className="flex items-center gap-2 border-l border-gray-200 pl-3 ml-1">
                   {session.user.image && (
-                    <img 
-                      src={session.user.image} 
-                      alt={session.user.name || 'User'} 
+                    <Image
+                      src={session.user.image}
+                      alt={session.user.name || 'User avatar'}
+                      width={32}
+                      height={32}
+                      unoptimized
                       className="w-8 h-8 rounded-full border border-gray-200"
                     />
                   )}

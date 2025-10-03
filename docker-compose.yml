@@ -1,0 +1,12 @@
+services:
+    app:
+        build:
+            context: .
+            dockerfile: Dockerfile
+        image: horizon
+        container_name: horizon
+        restart: unless-stopped
+        ports:
+            - "8067:3000"
+        volumes:
+            - /usr/share/nginx/:/etc/nginx/ssl/:ro
