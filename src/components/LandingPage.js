@@ -865,7 +865,7 @@ export default function LandingPage() {
                   </svg>
                 </div>
                 <span className="font-bold text-gray-900">
-                  Production Tracker
+                  Horizon
                 </span>
               </div>
               <p className="text-gray-600 text-sm leading-relaxed">

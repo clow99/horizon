@@ -1,5 +1,5 @@
 "use client";
-import { useState, useRef } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import TableView from '@/components/TableView';
 import Toast from '@/components/Toast';
@@ -22,7 +22,7 @@ export default function TableClient({ initialProjects, session }) {
   // Track in-flight updates per project to prevent concurrent updates to same project
   const projectUpdates = useRef(new Map());
 
-  const updateProject = async (projectId, updatedProjectOrFunction) => {
+  const updateProject = useCallback(async (projectId, updatedProjectOrFunction) => {
     console.log('TableClient.updateProject called:', { projectId, updatedProjectOrFunction: typeof updatedProjectOrFunction });
     
     // ALWAYS do optimistic update IMMEDIATELY (before waiting for any pending updates)
@@ -139,9 +139,9 @@ export default function TableClient({ initialProjects, session }) {
     projectUpdates.current.set(projectId, updatePromise);
 
     return updatePromise;
-  };
+  }, []);
 
-  const reorderProjects = (newProjects) => {
+  const reorderProjects = useCallback((newProjects) => {
     console.log('TableClient.reorderProjects called:', newProjects);
     // Update state with new order
     setProjects(newProjects);
@@ -149,9 +149,9 @@ export default function TableClient({ initialProjects, session }) {
     // Save the new order to the server
     const projectIds = newProjects.map(p => p.id);
     saveProjectOrder(projectIds);
-  };
+  }, []);
 
-  const saveProjectOrder = async (projectIds) => {
+  const saveProjectOrder = useCallback(async (projectIds) => {
     try {
       const response = await fetch('/api/projects/order', {
         method: 'PUT',
@@ -168,7 +168,7 @@ export default function TableClient({ initialProjects, session }) {
       console.error('Error saving project order:', error);
       showToast('Failed to save project order. Changes may not persist.', 'error');
     }
-  };
+  }, []);
 
   return (
     <>

@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useRef, useMemo, useCallback } from "react";
 import { signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import ProjectChecklist from "@/components/ProjectChecklist";
@@ -13,6 +13,12 @@ export default function DashboardClient({ initialProjects, session }) {
   const [showNewProjectModal, setShowNewProjectModal] = useState(false);
   const [useDefaultTasks, setUseDefaultTasks] = useState(true);
   const [toasts, setToasts] = useState([]);
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [sortBy, setSortBy] = useState("custom"); // 'custom', 'deadline', 'alpha', 'completion'
+  const [draggedProjectId, setDraggedProjectId] = useState(null);
+  const [dragOverProjectId, setDragOverProjectId] = useState(null);
+  const [isSavingOrder, setIsSavingOrder] = useState(false);
+  const projectRefs = useRef({});
 
   // Toast notification helper
   const showToast = (message, type = "error") => {
@@ -70,7 +76,7 @@ export default function DashboardClient({ initialProjects, session }) {
     }
   };
 
-  const deleteProject = async (projectId) => {
+  const deleteProject = useCallback(async (projectId) => {
     if (
       confirm(
         "Are you sure you want to delete this project? This action cannot be undone."
@@ -96,9 +102,9 @@ export default function DashboardClient({ initialProjects, session }) {
         showToast("Failed to delete project. It has been restored.", "error");
       }
     }
-  };
+  }, [projects, router]);
 
-  const updateProject = async (projectId, updatedProjectOrFunction) => {
+  const updateProject = useCallback(async (projectId, updatedProjectOrFunction) => {
     // ALWAYS do optimistic update IMMEDIATELY
     let updatedProject;
 
@@ -141,6 +147,206 @@ export default function DashboardClient({ initialProjects, session }) {
       // On error, just show toast - user can refresh to get server state
       showToast("Failed to update project. Please refresh the page.", "error");
     }
+  }, [projects, router]);
+
+  // Save project order to server
+  const saveProjectOrder = async (projectIds) => {
+    setIsSavingOrder(true);
+    try {
+      const response = await fetch("/api/projects/order", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectOrder: projectIds }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to save project order");
+      }
+    } catch (error) {
+      console.error("Error saving project order:", error);
+      showToast("Failed to save project order", "error");
+    } finally {
+      setIsSavingOrder(false);
+    }
+  };
+
+  // Create stable callback references using Map to avoid re-creating on each render
+  const projectUpdateCallbacks = useRef(new Map());
+  const projectDeleteCallbacks = useRef(new Map());
+
+  // Get or create memoized update callback for a specific project
+  const getUpdateCallback = useCallback((projectId) => {
+    if (!projectUpdateCallbacks.current.has(projectId)) {
+      projectUpdateCallbacks.current.set(projectId, (updatedProject) => {
+        updateProject(projectId, updatedProject);
+      });
+    }
+    return projectUpdateCallbacks.current.get(projectId);
+  }, [updateProject]);
+
+  // Get or create memoized delete callback for a specific project
+  const getDeleteCallback = useCallback((projectId) => {
+    if (!projectDeleteCallbacks.current.has(projectId)) {
+      projectDeleteCallbacks.current.set(projectId, () => {
+        deleteProject(projectId);
+      });
+    }
+    return projectDeleteCallbacks.current.get(projectId);
+  }, [deleteProject]);
+
+  // Drag and drop handlers for reordering projects
+  const handleDragStart = (e, projectId) => {
+    setDraggedProjectId(projectId);
+    setSortBy("custom"); // Switch to custom order when manually reordering
+    e.dataTransfer.effectAllowed = "move";
+  };
+
+  const handleDragOver = (e, projectId) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    if (projectId && projectId !== draggedProjectId) {
+      setDragOverProjectId(projectId);
+    }
+  };
+
+  const handleDragLeave = () => {
+    setDragOverProjectId(null);
+  };
+
+  // Helper function to sort projects based on current sort option - MEMOIZED for performance
+  const getSortedProjects = useMemo(() => {
+    const projectsCopy = [...projects];
+    
+    switch (sortBy) {
+      case "custom":
+        return projectsCopy.sort((a, b) => {
+          const orderA = a.display_order ?? 999999;
+          const orderB = b.display_order ?? 999999;
+          return orderA - orderB;
+        });
+      
+      case "deadline":
+        return projectsCopy.sort((a, b) => {
+          const getDaysUntilTarget = (targetDate) => {
+            if (!targetDate) return Infinity;
+            const target = new Date(targetDate);
+            const today = new Date();
+            const diffTime = target - today;
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            return diffDays;
+          };
+          const daysA = getDaysUntilTarget(a.target_date);
+          const daysB = getDaysUntilTarget(b.target_date);
+          return daysA - daysB;
+        });
+      
+      case "alpha":
+        return projectsCopy.sort((a, b) => 
+          a.name.localeCompare(b.name)
+        );
+      
+      case "completion":
+        return projectsCopy.sort((a, b) => {
+          const getCompletionPercentage = (project) => {
+            if (project.tasks.length === 0) return 0;
+            const completed = project.tasks.filter(t => t.status === "Completed").length;
+            return (completed / project.tasks.length) * 100;
+          };
+          return getCompletionPercentage(b) - getCompletionPercentage(a);
+        });
+      
+      default:
+        return projectsCopy;
+    }
+  }, [projects, sortBy]);
+
+  const handleDrop = async (e, targetProjectId) => {
+    e.preventDefault();
+    setDragOverProjectId(null);
+
+    if (draggedProjectId === targetProjectId) {
+      setDraggedProjectId(null);
+      return;
+    }
+
+    // Work with the current sorted array to get correct indices
+    const currentProjects = getSortedProjects;
+    const draggedIndex = currentProjects.findIndex((p) => p.id === draggedProjectId);
+    const targetIndex = currentProjects.findIndex((p) => p.id === targetProjectId);
+
+    if (draggedIndex === -1 || targetIndex === -1) {
+      setDraggedProjectId(null);
+      return;
+    }
+
+    // Capture positions before reorder (FLIP: First)
+    const beforePositions = {};
+    currentProjects.forEach((project) => {
+      const el = projectRefs.current[project.id];
+      if (el) {
+        const rect = el.getBoundingClientRect();
+        beforePositions[project.id] = { left: rect.left, top: rect.top };
+      }
+    });
+
+    // Reorder projects array
+    const newProjects = [...currentProjects];
+    const [removed] = newProjects.splice(draggedIndex, 1);
+    newProjects.splice(targetIndex, 0, removed);
+
+    // Update display_order for each project to reflect new positions
+    const projectsWithUpdatedOrder = newProjects.map((project, index) => ({
+      ...project,
+      display_order: index
+    }));
+
+    // Update state with new order
+    setProjects(projectsWithUpdatedOrder);
+
+    // Use requestAnimationFrame to ensure DOM has updated
+    requestAnimationFrame(() => {
+      // Capture positions after reorder (FLIP: Last)
+      projectsWithUpdatedOrder.forEach((project) => {
+        const el = projectRefs.current[project.id];
+        if (el && beforePositions[project.id]) {
+          const rect = el.getBoundingClientRect();
+          const deltaX = beforePositions[project.id].left - rect.left;
+          const deltaY = beforePositions[project.id].top - rect.top;
+
+          // Invert: Apply transform to make it look like it's still in the old position
+          if (deltaX !== 0 || deltaY !== 0) {
+            el.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
+            el.style.transition = "none";
+
+            // Play: Animate to new position
+            requestAnimationFrame(() => {
+              el.style.transition = "transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)";
+              el.style.transform = "translate(0, 0)";
+            });
+          }
+        }
+      });
+
+      // Clean up after animation
+      setTimeout(() => {
+        projectsWithUpdatedOrder.forEach((project) => {
+          const el = projectRefs.current[project.id];
+          if (el) {
+            el.style.transition = "";
+            el.style.transform = "";
+          }
+        });
+        setDraggedProjectId(null);
+      }, 300);
+    });
+
+    // Save the new order to the server
+    await saveProjectOrder(projectsWithUpdatedOrder.map((p) => p.id));
+  };
+
+  const handleDragEnd = () => {
+    setDraggedProjectId(null);
+    setDragOverProjectId(null);
   };
 
   const calculateOverallProgress = () => {
@@ -174,22 +380,18 @@ export default function DashboardClient({ initialProjects, session }) {
     0
   );
 
-  // Sort projects by days left (ascending - soonest deadline first)
-  const sortedProjects = [...projects].sort((a, b) => {
-    const getDaysUntilTarget = (targetDate) => {
-      if (!targetDate) return Infinity; // Projects without target date go to the end
-      const target = new Date(targetDate);
-      const today = new Date();
-      const diffTime = target - today;
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      return diffDays;
-    };
+  // Sort projects based on selected sort option - using memoized value
+  const sortedProjects = getSortedProjects;
 
-    const daysA = getDaysUntilTarget(a.target_date);
-    const daysB = getDaysUntilTarget(b.target_date);
-
-    return daysA - daysB;
-  });
+  const getSortLabel = () => {
+    switch (sortBy) {
+      case "custom": return "Custom Order";
+      case "deadline": return "Deadline (Soonest First)";
+      case "alpha": return "Alphabetical";
+      case "completion": return "Completion %";
+      default: return "Custom Order";
+    }
+  };
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
@@ -216,7 +418,7 @@ export default function DashboardClient({ initialProjects, session }) {
                 </div>
                 <div>
                   <h1 className="text-xl font-bold text-gray-900">
-                    Production Tracker
+                    Horizon
                   </h1>
                   <p className="text-xs text-gray-600">Deployment Management</p>
                 </div>
@@ -239,25 +441,61 @@ export default function DashboardClient({ initialProjects, session }) {
 
             <div className="flex items-center gap-4">
               {session?.user && (
-                <div className="flex items-center gap-3 bg-gray-50 px-4 py-2 rounded-lg border border-gray-200">
-                  {session.user.image && (
-                    <img
-                      src={session.user.image}
-                      alt={session.user.name}
-                      className="w-8 h-8 rounded-full border-2 border-blue-500 shadow-md"
-                    />
+                <div className="relative">
+                  <button
+                    onClick={() => setShowProfileMenu(!showProfileMenu)}
+                    className="flex items-center gap-3 bg-gray-50 px-4 py-2 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors"
+                  >
+                    {session.user.image && (
+                      <img
+                        src={session.user.image}
+                        alt={session.user.name}
+                        className="w-8 h-8 rounded-full border-2 border-blue-500 shadow-md"
+                      />
+                    )}
+                    <span className="text-sm font-medium text-gray-900">
+                      {session.user.name}
+                    </span>
+                    <svg 
+                      className={`w-4 h-4 text-gray-500 transition-transform ${showProfileMenu ? 'rotate-180' : ''}`}
+                      fill="none" 
+                      stroke="currentColor" 
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+
+                  {/* Dropdown Menu */}
+                  {showProfileMenu && (
+                    <>
+                      {/* Backdrop to close menu */}
+                      <div 
+                        className="fixed inset-0 z-10" 
+                        onClick={() => setShowProfileMenu(false)}
+                      />
+                      <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
+                        <div className="px-4 py-3 border-b border-gray-100">
+                          <p className="text-sm font-medium text-gray-900">{session.user.name}</p>
+                          <p className="text-xs text-gray-500 truncate">{session.user.email}</p>
+                        </div>
+                        <button
+                          onClick={() => {
+                            setShowProfileMenu(false);
+                            signOut({ callbackUrl: "/" });
+                          }}
+                          className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 transition-colors"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                          </svg>
+                          Sign Out
+                        </button>
+                      </div>
+                    </>
                   )}
-                  <span className="text-sm font-medium text-gray-900">
-                    {session.user.name}
-                  </span>
                 </div>
               )}
-              <button
-                onClick={() => signOut({ callbackUrl: "/" })}
-                className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-              >
-                Sign Out
-              </button>
             </div>
           </div>
         </div>
@@ -530,21 +768,72 @@ export default function DashboardClient({ initialProjects, session }) {
               <h2 className="text-xl font-bold text-gray-900">
                 Your Projects ({projects.length})
               </h2>
-              <div className="text-sm text-gray-600">
-                Sorted by deadline (soonest first)
+              <div className="flex items-center gap-3">
+                {isSavingOrder && (
+                  <div className="flex items-center gap-2 text-sm text-blue-600">
+                    <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Saving order...
+                  </div>
+                )}
+                <div className="relative">
+                  <select
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value)}
+                    className="appearance-none bg-white border border-gray-300 rounded-lg pl-4 pr-10 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                  >
+                    <option value="custom">🎯 Custom Order</option>
+                    <option value="deadline">📅 By Deadline</option>
+                    <option value="alpha">🔤 Alphabetical</option>
+                    <option value="completion">📊 By Completion</option>
+                  </select>
+                  <svg className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </div>
               </div>
             </div>
+            {sortBy === "custom" && (
+              <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-center gap-2 text-sm text-blue-800">
+                <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span><strong>Drag & drop</strong> projects to reorder them. Your custom order will be saved automatically.</span>
+              </div>
+            )}
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-              {sortedProjects.map((project) => (
-                <ProjectChecklist
-                  key={project.id}
-                  project={project}
-                  onUpdate={(updatedProject) =>
-                    updateProject(project.id, updatedProject)
-                  }
-                  onDelete={() => deleteProject(project.id)}
-                />
-              ))}
+              {sortedProjects.map((project) => {
+                const isDragging = draggedProjectId === project.id;
+                const isDragOver = dragOverProjectId === project.id;
+                
+                return (
+                  <div
+                    key={project.id}
+                    ref={(el) => projectRefs.current[project.id] = el}
+                    draggable={sortBy === "custom"}
+                    onDragStart={(e) => handleDragStart(e, project.id)}
+                    onDragOver={(e) => handleDragOver(e, project.id)}
+                    onDragLeave={handleDragLeave}
+                    onDrop={(e) => handleDrop(e, project.id)}
+                    onDragEnd={handleDragEnd}
+                    className={`transition-all ${
+                      sortBy === "custom" ? "cursor-grab active:cursor-grabbing" : ""
+                    } ${
+                      isDragging ? "opacity-50 scale-95" : ""
+                    } ${
+                      isDragOver ? "scale-105 ring-4 ring-blue-400 ring-opacity-50" : ""
+                    }`}
+                  >
+                    <ProjectChecklist
+                      project={project}
+                      onUpdate={getUpdateCallback(project.id)}
+                      onDelete={getDeleteCallback(project.id)}
+                    />
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}

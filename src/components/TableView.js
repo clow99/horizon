@@ -1,5 +1,5 @@
 "use client";
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect, useRef, memo } from "react";
 import Link from "next/link";
 import { signOut } from "next-auth/react";
 
@@ -10,7 +10,7 @@ const statusOptions = [
   { value: "Blocked", label: "Blocked", color: "red" },
 ];
 
-export default function TableView({
+function TableView({
   projects,
   onUpdateProject,
   onReorderProjects,
@@ -30,6 +30,7 @@ export default function TableView({
   const [addingTasks, setAddingTasks] = useState(new Set()); // Track which tasks are currently being added
   const projectRefs = useRef({});
   const updateQueueRef = useRef(Promise.resolve()); // Queue for local updates
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
 
   // Pagination state - Always default to "All" projects
   const [currentPage, setCurrentPage] = useState(0);
@@ -598,7 +599,7 @@ export default function TableView({
                 </div>
                 <div>
                   <h1 className="text-xl font-bold text-gray-900">
-                    Production Tracker
+                    Horizon
                   </h1>
                   <p className="text-xs text-gray-600">Deployment Management</p>
                 </div>
@@ -730,25 +731,61 @@ export default function TableView({
 
               {/* User Profile */}
               {session?.user && (
-                <div className="flex items-center gap-3 bg-gray-50 px-4 py-2 rounded-lg border border-gray-200">
-                  {session.user.image && (
-                    <img
-                      src={session.user.image}
-                      alt={session.user.name}
-                      className="w-8 h-8 rounded-full border-2 border-blue-500 shadow-md"
-                    />
+                <div className="relative">
+                  <button
+                    onClick={() => setShowProfileMenu(!showProfileMenu)}
+                    className="flex items-center gap-3 bg-gray-50 px-4 py-2 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors"
+                  >
+                    {session.user.image && (
+                      <img
+                        src={session.user.image}
+                        alt={session.user.name}
+                        className="w-8 h-8 rounded-full border-2 border-blue-500 shadow-md"
+                      />
+                    )}
+                    <span className="text-sm font-medium text-gray-900">
+                      {session.user.name}
+                    </span>
+                    <svg 
+                      className={`w-4 h-4 text-gray-500 transition-transform ${showProfileMenu ? 'rotate-180' : ''}`}
+                      fill="none" 
+                      stroke="currentColor" 
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+
+                  {/* Dropdown Menu */}
+                  {showProfileMenu && (
+                    <>
+                      {/* Backdrop to close menu */}
+                      <div 
+                        className="fixed inset-0 z-10" 
+                        onClick={() => setShowProfileMenu(false)}
+                      />
+                      <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
+                        <div className="px-4 py-3 border-b border-gray-100">
+                          <p className="text-sm font-medium text-gray-900">{session.user.name}</p>
+                          <p className="text-xs text-gray-500 truncate">{session.user.email}</p>
+                        </div>
+                        <button
+                          onClick={() => {
+                            setShowProfileMenu(false);
+                            signOut({ callbackUrl: "/" });
+                          }}
+                          className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 transition-colors"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                          </svg>
+                          Sign Out
+                        </button>
+                      </div>
+                    </>
                   )}
-                  <span className="text-sm font-medium text-gray-900">
-                    {session.user.name}
-                  </span>
                 </div>
               )}
-              <button
-                onClick={() => signOut({ callbackUrl: "/" })}
-                className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-              >
-                Sign Out
-              </button>
             </div>
           </div>
 
@@ -1430,3 +1467,6 @@ export default function TableView({
     </div>
   );
 }
+
+// Memoize to prevent re-renders when parent state changes but props haven't
+export default memo(TableView);

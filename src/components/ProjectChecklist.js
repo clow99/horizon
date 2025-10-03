@@ -1,5 +1,5 @@
 "use client";
-import { useState } from 'react';
+import { useState, memo } from 'react';
 
 const statusOptions = [
   { value: 'Not Started', label: 'Not Started', color: 'gray' },
@@ -19,8 +19,8 @@ const categoryColors = {
   'Deployment': 'bg-green-100 text-green-700 border-green-200'
 };
 
-export default function ProjectChecklist({ project, onUpdate, onDelete }) {
-  const [isExpanded, setIsExpanded] = useState(false);
+function ProjectChecklist({ project, onUpdate, onDelete }) {
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingField, setEditingField] = useState(null);
   const [tempValue, setTempValue] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
@@ -126,24 +126,26 @@ export default function ProjectChecklist({ project, onUpdate, onDelete }) {
   const daysUntilTarget = getDaysUntilTarget();
 
   return (
-    <div className="bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden hover:shadow-lg transition-shadow duration-300">
-      {/* Project Header */}
-      <div className="bg-gradient-to-r from-slate-800 to-slate-900 p-6">
-        <div className="flex items-start justify-between mb-4">
-          <div className="flex items-start gap-4 flex-1">
-            <button
-              onClick={() => setIsExpanded(!isExpanded)}
-              className="text-white hover:bg-slate-700 rounded-lg p-2 transition-colors mt-1"
-            >
-              <svg
-                className={`w-6 h-6 transform transition-transform ${isExpanded ? 'rotate-90' : ''}`}
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
-            </button>
+    <>
+      {/* Project Card - Clickable to open modal */}
+      <div 
+        onClick={() => setIsModalOpen(true)}
+        className="bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden hover:shadow-lg transition-all duration-300 cursor-pointer hover:scale-[1.02]"
+      >
+        {/* Project Header */}
+        <div className="bg-gradient-to-r from-slate-800 to-slate-900 p-6">
+          <div className="flex items-start justify-between mb-4">
+            <div className="flex items-start gap-4 flex-1">
+              <div className="text-white p-2">
+                <svg
+                  className="w-6 h-6"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+              </div>
             
             <div className="flex-1">
               {editingField === 'name' ? (
@@ -187,7 +189,10 @@ export default function ProjectChecklist({ project, onUpdate, onDelete }) {
                     {project.name}
                   </h2>
                   <button
-                    onClick={() => startEditing('name', project.name)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      startEditing('name', project.name);
+                    }}
                     className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-white transition-all p-1"
                     title="Edit name"
                   >
@@ -237,7 +242,10 @@ export default function ProjectChecklist({ project, onUpdate, onDelete }) {
                     {project.description}
                   </p>
                   <button
-                    onClick={() => startEditing('description', project.description)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      startEditing('description', project.description);
+                    }}
                     className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-white transition-all p-1"
                     title="Edit description"
                   >
@@ -285,7 +293,10 @@ export default function ProjectChecklist({ project, onUpdate, onDelete }) {
                       <span>{project.client || 'No client'}</span>
                     </div>
                     <button
-                      onClick={() => startEditing('client', project.client)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        startEditing('client', project.client);
+                      }}
                       className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-white transition-all p-1"
                       title="Edit client"
                     >
@@ -348,7 +359,10 @@ export default function ProjectChecklist({ project, onUpdate, onDelete }) {
                       </span>
                     </div>
                     <button
-                      onClick={() => startEditing('target_date', project.target_date)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        startEditing('target_date', project.target_date);
+                      }}
                       className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-white transition-all p-1"
                       title="Edit target date"
                     >
@@ -371,15 +385,6 @@ export default function ProjectChecklist({ project, onUpdate, onDelete }) {
                 Ready to Deploy
               </div>
             )}
-            <button
-              onClick={onDelete}
-              className="text-white hover:bg-red-500 rounded-lg p-2 transition-colors"
-              title="Delete Project"
-            >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-              </svg>
-            </button>
           </div>
         </div>
 
@@ -405,14 +410,59 @@ export default function ProjectChecklist({ project, onUpdate, onDelete }) {
           </div>
         </div>
       </div>
+      </div>
 
-      {/* Tasks List */}
-      {isExpanded && (
-        <div className="p-4">
-          {/* Add Task Button */}
-          <div className="mb-4">
+      {/* Modal for Task Details */}
+      {isModalOpen && (
+        <div 
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          onClick={() => setIsModalOpen(false)}
+        >
+          <div 
+            className="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="bg-gradient-to-r from-slate-800 to-slate-900 p-6 sticky top-0 z-10">
+              <div className="flex items-center justify-between">
+                <h2 className="text-2xl font-bold text-white">{project.name}</h2>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDelete();
+                      setIsModalOpen(false);
+                    }}
+                    className="text-white hover:bg-red-500 rounded-lg p-2 transition-colors"
+                    title="Delete Project"
+                  >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={() => setIsModalOpen(false)}
+                    className="text-white hover:bg-slate-700 rounded-lg p-2 transition-colors"
+                    title="Close"
+                  >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Body - Scrollable */}
+            <div className="overflow-y-auto max-h-[calc(90vh-88px)]">
+              <div className="p-6">
+                {/* Add Task Button */}
+                <div className="mb-4">
             <button
-              onClick={() => setShowAddTaskForm(!showAddTaskForm)}
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowAddTaskForm(!showAddTaskForm);
+              }}
               className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition-all duration-200 flex items-center gap-2 text-sm"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -540,7 +590,7 @@ export default function ProjectChecklist({ project, onUpdate, onDelete }) {
           </div>
 
           {/* Tasks Table */}
-          <div className="space-y-1.5">
+          <div className="space-y-1.5 w-full">
             {filteredTasks.length === 0 ? (
               <div className="text-center py-12 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
                 <svg className="w-16 h-16 text-gray-400 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -582,9 +632,9 @@ export default function ProjectChecklist({ project, onUpdate, onDelete }) {
                     
                     {/* User Info Icon - Shows who last updated */}
                     {task.updated_by_user_name && (
-                      <div className="relative group">
+                      <div className="relative [&>svg:hover+div]:block">
                         <svg 
-                          className="w-3.5 h-3.5 text-gray-400 group-hover:text-blue-600 transition-colors cursor-help" 
+                          className="w-3.5 h-3.5 text-gray-400 hover:text-blue-600 transition-colors cursor-help" 
                           fill="none" 
                           stroke="currentColor" 
                           viewBox="0 0 24 24"
@@ -597,7 +647,7 @@ export default function ProjectChecklist({ project, onUpdate, onDelete }) {
                           />
                         </svg>
                         {/* Tooltip - only shows on icon hover */}
-                        <div className="absolute left-0 top-5 hidden group-hover:block z-50 whitespace-nowrap pointer-events-none">
+                        <div className="absolute left-0 top-5 hidden z-50 whitespace-nowrap pointer-events-none">
                           <div className="bg-gray-900 text-white text-xs rounded py-1 px-2 shadow-lg">
                             {task.updated_by_user_name}
                           </div>
@@ -607,7 +657,7 @@ export default function ProjectChecklist({ project, onUpdate, onDelete }) {
                   </div>
 
                   {/* Task Info */}
-                  <div className="flex-1 min-w-0">
+                  <div className="w-full">
                     <div className="flex items-center gap-1.5">
                       <h4 className={`text-sm font-medium leading-tight ${task.status === 'Completed' ? 'line-through text-gray-500' : 'text-gray-900'}`}>
                         {task.name}
@@ -643,7 +693,7 @@ export default function ProjectChecklist({ project, onUpdate, onDelete }) {
                   </select>
 
                   {/* Action Menu Dropdown */}
-                  <div className="relative w-full">
+                  <div className="relative">
                     <button
                       onClick={() => setShowMenuFor(showMenuFor === task.id ? null : task.id)}
                       className="p-1.5 rounded-lg text-gray-600 hover:bg-gray-100 transition-colors w-full"
@@ -722,8 +772,14 @@ export default function ProjectChecklist({ project, onUpdate, onDelete }) {
             ))
             )}
           </div>
+              </div>
+            </div>
+          </div>
         </div>
       )}
-    </div>
+    </>
   );
 }
+
+// Memoize to prevent re-renders when parent state changes but props haven't
+export default memo(ProjectChecklist);
