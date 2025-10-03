@@ -6,7 +6,8 @@ import { useRouter } from "next/navigation";
 import ProjectChecklist from "@/components/ProjectChecklist";
 import Toast from "@/components/Toast";
 import Link from "next/link";
-import { createProjectTasks } from "@/config/tasks";
+import CreateProjectModal from "@/components/CreateProjectModal";
+import Footer from "@/components/Footer";
 import { mergeProjectUpdate } from "@/lib/client/mergeProjectUpdate";
 import { prepareProjectPayload } from "@/lib/client/prepareProjectPayload";
 
@@ -14,7 +15,6 @@ export default function DashboardClient({ initialProjects, session }) {
   const router = useRouter();
   const [projects, setProjects] = useState(initialProjects);
   const [showNewProjectModal, setShowNewProjectModal] = useState(false);
-  const [useDefaultTasks, setUseDefaultTasks] = useState(true);
   const [toasts, setToasts] = useState([]);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [sortBy, setSortBy] = useState("custom"); // 'custom', 'deadline', 'alpha', 'completion'
@@ -34,7 +34,7 @@ export default function DashboardClient({ initialProjects, session }) {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   };
 
-  const addProject = async (includeDefaults = true) => {
+  const addProject = async (projectType, tasks) => {
     // Create a temporary ID for optimistic update
     const tempId = `temp-${Date.now()}`;
     const newProject = {
@@ -46,7 +46,7 @@ export default function DashboardClient({ initialProjects, session }) {
         .toISOString()
         .split("T")[0],
       status: "Planning",
-      tasks: includeDefaults ? createProjectTasks() : [],
+      tasks: tasks || [],
     };
 
     // Optimistic update - add to UI immediately
@@ -459,7 +459,8 @@ export default function DashboardClient({ initialProjects, session }) {
   };
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 flex flex-col">
+      <main className="flex-1">
       {/* Professional Header */}
       <header className="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-50">
         <div className="mx-auto px-6 py-4">
@@ -547,6 +548,16 @@ export default function DashboardClient({ initialProjects, session }) {
                           <p className="text-sm font-medium text-gray-900">{session.user.name}</p>
                           <p className="text-xs text-gray-500 truncate">{session.user.email}</p>
                         </div>
+                        <Link
+                          href="/profile"
+                          onClick={() => setShowProfileMenu(false)}
+                          className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 transition-colors"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                          </svg>
+                          Profile
+                        </Link>
                         <button
                           onClick={() => {
                             setShowProfileMenu(false);
@@ -909,110 +920,11 @@ export default function DashboardClient({ initialProjects, session }) {
       </div>
 
       {/* New Project Modal */}
-      {showNewProjectModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
-          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full animate-in zoom-in-95 duration-200">
-            <div className="p-6">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-bold text-gray-900">
-                  Create New Project
-                </h2>
-                <button
-                  onClick={() => setShowNewProjectModal(false)}
-                  className="text-gray-400 hover:text-gray-600 transition-colors"
-                >
-                  <svg
-                    className="w-6 h-6"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M6 18L18 6M6 6l12 12"
-                    />
-                  </svg>
-                </button>
-              </div>
-
-              <div className="space-y-4">
-                <div>
-                  <p className="text-sm text-gray-700 mb-4">
-                    Choose how you want to start your project:
-                  </p>
-
-                  <div className="space-y-3">
-                    <label
-                      className={`flex items-center gap-3 p-3 bg-white rounded-lg cursor-pointer hover:bg-blue-50 transition-all border ${
-                        useDefaultTasks
-                          ? "border-blue-500 ring-2 ring-blue-200"
-                          : "border-gray-200"
-                      }`}
-                    >
-                      <input
-                        type="radio"
-                        name="taskOption"
-                        checked={useDefaultTasks}
-                        onChange={() => setUseDefaultTasks(true)}
-                        className="w-4 h-4 text-blue-600"
-                      />
-                      <div>
-                        <div className="font-medium text-gray-900 text-sm">
-                          With Default Tasks
-                        </div>
-                        <div className="text-xs text-gray-500">
-                          Start with pre-configured checklist
-                        </div>
-                      </div>
-                    </label>
-
-                    <label
-                      className={`flex items-center gap-3 p-3 bg-white rounded-lg cursor-pointer hover:bg-blue-50 transition-all border ${
-                        !useDefaultTasks
-                          ? "border-blue-500 ring-2 ring-blue-200"
-                          : "border-gray-200"
-                      }`}
-                    >
-                      <input
-                        type="radio"
-                        name="taskOption"
-                        checked={!useDefaultTasks}
-                        onChange={() => setUseDefaultTasks(false)}
-                        className="w-4 h-4 text-blue-600"
-                      />
-                      <div>
-                        <div className="font-medium text-gray-900 text-sm">
-                          Empty Project
-                        </div>
-                        <div className="text-xs text-gray-500">
-                          Start from scratch with custom tasks
-                        </div>
-                      </div>
-                    </label>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex gap-3 px-6 pb-6">
-              <button
-                onClick={() => setShowNewProjectModal(false)}
-                className="flex-1 px-4 py-2.5 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors text-sm"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => addProject(useDefaultTasks)}
-                className="flex-1 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors text-sm shadow-sm"
-              >
-                Create Project
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <CreateProjectModal
+        isOpen={showNewProjectModal}
+        onClose={() => setShowNewProjectModal(false)}
+        onCreate={addProject}
+      />
 
       {/* Toast Notifications */}
       {toasts.map((toast) => (
@@ -1023,6 +935,10 @@ export default function DashboardClient({ initialProjects, session }) {
           onClose={() => removeToast(toast.id)}
         />
       ))}
-    </main>
+      </main>
+
+      {/* Footer */}
+      <Footer />
+    </div>
   );
 }
