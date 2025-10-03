@@ -459,8 +459,8 @@ export default function DashboardClient({ initialProjects, session }) {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 flex flex-col">
-      <main className="flex-1">
+    <div className="bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 flex flex-col">
+      <main className="flex-1 min-h-screen">
       {/* Professional Header */}
       <header className="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-50">
         <div className="mx-auto px-6 py-4">
