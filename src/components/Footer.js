@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 export default function Footer() {
   const currentYear = new Date().getFullYear();
   
@@ -56,10 +58,10 @@ export default function Footer() {
           <div>
             <h4 className="font-semibold text-gray-900 mb-3 text-sm">Resources</h4>
             <ul className="space-y-2 text-sm text-gray-600">
-              <li className="hover:text-blue-600 transition-colors cursor-pointer">Documentation</li>
-              <li className="hover:text-blue-600 transition-colors cursor-pointer">Support</li>
-              <li className="hover:text-blue-600 transition-colors cursor-pointer">Privacy Policy</li>
-              <li className="hover:text-blue-600 transition-colors cursor-pointer">Terms of Service</li>
+              <li><Link href="/docs" className="hover:text-blue-600 transition-colors">Documentation</Link></li>
+              <li><Link href="/support" className="hover:text-blue-600 transition-colors">Support</Link></li>
+              <li><Link href="/privacy" className="hover:text-blue-600 transition-colors">Privacy Policy</Link></li>
+              <li><Link href="/terms" className="hover:text-blue-600 transition-colors">Terms of Service</Link></li>
             </ul>
           </div>
         </div>
@@ -70,15 +72,15 @@ export default function Footer() {
             © {currentYear} Horizon. Built with Next.js, MySQL & ❤️
           </p>
           <div className="flex items-center gap-6">
-            <a href="#" className="text-gray-600 hover:text-blue-600 transition-colors text-sm">
+            <Link href="/status" className="text-gray-600 hover:text-blue-600 transition-colors text-sm">
               Status
-            </a>
-            <a href="#" className="text-gray-600 hover:text-blue-600 transition-colors text-sm">
+            </Link>
+            <Link href="/api-docs" className="text-gray-600 hover:text-blue-600 transition-colors text-sm">
               API
-            </a>
-            <a href="#" className="text-gray-600 hover:text-blue-600 transition-colors text-sm">
+            </Link>
+            <Link href="/changelog" className="text-gray-600 hover:text-blue-600 transition-colors text-sm">
               Changelog
-            </a>
+            </Link>
           </div>
         </div>
       </div>
