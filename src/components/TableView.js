@@ -89,7 +89,7 @@ function TableView({
   session,
 }) {
   const [selectedCategory, setSelectedCategory] = useState("all");
-  const [groupBy, setGroupBy] = useState("task"); // 'task' or 'category'
+  const [groupBy, setGroupBy] = useState("category"); // 'task' or 'category'
   const [updatingTasks, setUpdatingTasks] = useState(new Set()); // Track which tasks are updating
   const [draggedProjectId, setDraggedProjectId] = useState(null);
   const [dragOverProjectId, setDragOverProjectId] = useState(null);
@@ -106,22 +106,94 @@ function TableView({
   const [currentPage, setCurrentPage] = useState(0);
   const [projectsPerPage, setProjectsPerPage] = useState(6);
   const [isClient, setIsClient] = useState(false);
+  const [selectedProjectIds, setSelectedProjectIds] = useState(() =>
+    projects.map((project) => project.id)
+  );
+  const [showProjectDropdown, setShowProjectDropdown] = useState(false);
+  const previousProjectIdsRef = useRef(projects.map((project) => project.id));
 
   // Set isClient flag on mount
   useEffect(() => {
     setIsClient(true);
   }, []);
 
+  // Keep selected project IDs in sync with project list, while preserving manual selections
+  useEffect(() => {
+    const currentProjectIds = projects.map((project) => project.id);
+    const previousProjectIds = previousProjectIdsRef.current;
+
+    setSelectedProjectIds((prevIds) => {
+      const selectedSet = new Set(prevIds);
+      let hasNewProject = false;
+
+      currentProjectIds.forEach((id) => {
+        if (!selectedSet.has(id) && !previousProjectIds.includes(id)) {
+          selectedSet.add(id);
+          hasNewProject = true;
+        }
+      });
+
+      const normalizedIds = currentProjectIds.filter((id) =>
+        selectedSet.has(id)
+      );
+
+      if (
+        !hasNewProject &&
+        normalizedIds.length === prevIds.length &&
+        normalizedIds.every((id, index) => id === prevIds[index])
+      ) {
+        return prevIds;
+      }
+
+      return normalizedIds;
+    });
+
+    previousProjectIdsRef.current = currentProjectIds;
+  }, [projects]);
+
+  // Reset pagination when the selected project set changes
+  useEffect(() => {
+    setCurrentPage((prev) => (prev === 0 ? prev : 0));
+  }, [selectedProjectIds]);
+
+  const visibleProjects = useMemo(() => {
+    if (selectedProjectIds.length === 0) {
+      return [];
+    }
+    const selectedSet = new Set(selectedProjectIds);
+    return projects.filter((project) => selectedSet.has(project.id));
+  }, [projects, selectedProjectIds]);
+
+  const totalProjectsCount = projects.length;
+  const totalSelectedProjects = selectedProjectIds.length;
+  const allProjectsSelected =
+    totalProjectsCount > 0 && totalSelectedProjects === totalProjectsCount;
+  const projectSelectionLabel =
+    totalSelectedProjects === 0
+      ? "No projects selected"
+      : allProjectsSelected
+      ? `${totalProjectsCount} projects`
+      : `${totalSelectedProjects} of ${totalProjectsCount} projects`;
+
   // Calculate pagination
   const effectiveProjectsPerPage = Math.min(projectsPerPage, 6);
-  const totalPages = Math.ceil(projects.length / effectiveProjectsPerPage);
+  const totalPages = Math.ceil(
+    visibleProjects.length / effectiveProjectsPerPage
+  );
   const startIndex = currentPage * effectiveProjectsPerPage;
   const endIndex = startIndex + effectiveProjectsPerPage;
-  const paginatedProjects = projects.slice(startIndex, endIndex);
+  const paginatedProjects = visibleProjects.slice(startIndex, endIndex);
 
   // Reset to first page if current page is out of bounds
   useEffect(() => {
-    if (currentPage >= totalPages && totalPages > 0) {
+    if (totalPages === 0) {
+      if (currentPage !== 0) {
+        setCurrentPage(0);
+      }
+      return;
+    }
+
+    if (currentPage >= totalPages) {
       setCurrentPage(totalPages - 1);
     }
   }, [currentPage, totalPages]);
@@ -132,7 +204,7 @@ function TableView({
     const taskMap = new Map();
 
     // Collect all unique tasks from all projects
-    projects.forEach((project) => {
+    visibleProjects.forEach((project) => {
       project.tasks.forEach((task) => {
         if (!taskMap.has(task.name)) {
           taskMap.set(task.name, {
@@ -178,16 +250,16 @@ function TableView({
     });
 
     return tasksArray;
-  }, [projects]);
+  }, [visibleProjects]);
 
   // Get all unique categories
   const categories = useMemo(() => {
     const cats = new Set();
-    projects.forEach((project) => {
+    visibleProjects.forEach((project) => {
       project.tasks.forEach((task) => cats.add(task.category));
     });
     return ["all", ...Array.from(cats)];
-  }, [projects]);
+  }, [visibleProjects]);
 
   // Filter tasks by category AND ensure they exist in at least one project
   const filteredTasks = useMemo(() => {
@@ -200,11 +272,11 @@ function TableView({
     // Then filter out tasks that don't exist in ANY project
     // (This ensures rows disappear when all instances are deleted)
     return categoryFiltered.filter((taskTemplate) => {
-      return projects.some((project) =>
+      return visibleProjects.some((project) =>
         project.tasks.some((task) => task.name === taskTemplate.name)
       );
     });
-  }, [allUniqueTaskNames, selectedCategory, projects]);
+  }, [allUniqueTaskNames, selectedCategory, visibleProjects]);
 
   // Group tasks by category if needed
   const groupedTasks = useMemo(() => {
@@ -521,6 +593,28 @@ function TableView({
     setDragOverProjectId(null);
   };
 
+  const toggleProjectSelection = (projectId) => {
+    setSelectedProjectIds((prevIds) => {
+      if (prevIds.includes(projectId)) {
+        return prevIds.filter((id) => id !== projectId);
+      }
+
+      const nextSet = new Set([...prevIds, projectId]);
+      return projects
+        .filter((project) => nextSet.has(project.id))
+        .map((project) => project.id);
+    });
+  };
+
+  const handleToggleAllProjects = () => {
+    if (allProjectsSelected) {
+      setSelectedProjectIds([]);
+      return;
+    }
+
+    setSelectedProjectIds(projects.map((project) => project.id));
+  };
+
   const saveProjectOrder = async (projectIds) => {
     setIsSavingOrder(true);
     setHasManualOrder(true); // Mark that user has manually reordered
@@ -548,7 +642,7 @@ function TableView({
     let completed = 0;
     let blocked = 0;
 
-    projects.forEach((project) => {
+    visibleProjects.forEach((project) => {
       const task = findTaskInProject(project, taskName);
       if (task) {
         total++;
@@ -570,11 +664,11 @@ function TableView({
   };
 
   // Calculate overall stats
-  const overallStats = useMemo(() => {
+  const visibleStats = useMemo(() => {
     let totalTasks = 0;
     let completedTasks = 0;
 
-    projects.forEach((project) => {
+    visibleProjects.forEach((project) => {
       project.tasks.forEach((task) => {
         totalTasks++;
         if (task.status === "Completed") completedTasks++;
@@ -587,7 +681,7 @@ function TableView({
       percentage:
         totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0,
     };
-  }, [projects]);
+  }, [visibleProjects]);
 
   if (projects.length === 0) {
     return (
@@ -687,12 +781,113 @@ function TableView({
             <div className="flex items-center gap-4">
               {/* Compact Stats */}
               <div className="flex items-center gap-3 text-sm bg-gray-50 px-4 py-2 rounded-lg border border-gray-200">
-                <span className="text-gray-900 font-medium">
-                  {projects.length} projects
-                </span>
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setShowProjectDropdown((prev) => !prev)}
+                    className="flex items-center gap-1.5 font-medium text-gray-900 hover:text-blue-600 transition-colors"
+                  >
+                    <span>{projectSelectionLabel}</span>
+                    <svg
+                      className={`w-4 h-4 text-gray-500 transition-transform ${
+                        showProjectDropdown ? "rotate-180" : ""
+                      }`}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M19 9l-7 7-7-7"
+                      />
+                    </svg>
+                  </button>
+
+                  {showProjectDropdown && (
+                    <>
+                      <div
+                        className="fixed inset-0 z-10"
+                        onClick={() => setShowProjectDropdown(false)}
+                      />
+                      <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-gray-200 z-20">
+                        <div className="flex items-center justify-between px-4 py-2 border-b border-gray-100">
+                          <span className="text-xs font-semibold uppercase text-gray-500 tracking-wide">
+                            Select projects
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleToggleAllProjects()}
+                            className="text-xs font-medium text-blue-600 hover:text-blue-700"
+                          >
+                            {allProjectsSelected ? "Clear all" : "Select all"}
+                          </button>
+                        </div>
+                        <div className="max-h-64 overflow-y-auto py-1">
+                          {projects.map((project) => {
+                            const isSelected = selectedProjectIds.includes(project.id);
+                            return (
+                              <button
+                                key={project.id}
+                                type="button"
+                                onClick={() => toggleProjectSelection(project.id)}
+                                className={`w-full flex items-center justify-between px-4 py-2 text-sm text-left transition-colors ${
+                                  isSelected
+                                    ? "bg-blue-50 text-blue-700"
+                                    : "hover:bg-gray-50 text-gray-700"
+                                }`}
+                              >
+                                <span className="truncate pr-2">{project.name}</span>
+                                <span
+                                  className={`flex h-5 w-5 items-center justify-center rounded border ${
+                                    isSelected
+                                      ? "border-blue-500 bg-blue-500 text-white shadow-sm"
+                                      : "border-gray-300 text-transparent"
+                                  }`}
+                                >
+                                  <svg
+                                    className="h-3.5 w-3.5"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth={3}
+                                      d="M5 13l4 4L19 7"
+                                    />
+                                  </svg>
+                                </span>
+                              </button>
+                            );
+                          })}
+                          {projects.length === 0 && (
+                            <div className="px-4 py-3 text-sm text-gray-500">
+                              No projects available.
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex items-center justify-between px-4 py-2 border-t border-gray-100">
+                          <span className="text-xs text-gray-500">
+                            {totalSelectedProjects} selected
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setShowProjectDropdown(false)}
+                            className="text-xs font-medium text-gray-500 hover:text-gray-700"
+                          >
+                            Close
+                          </button>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
                 <span className="text-gray-300">•</span>
                 <span className="font-semibold text-blue-600">
-                  {overallStats.percentage}% complete
+                  {visibleStats.percentage}% complete
                 </span>
                 {isSavingOrder && (
                   <>
@@ -952,29 +1147,6 @@ function TableView({
                     </label>
                     <div className="inline-flex items-center bg-gray-100 rounded-lg p-1 gap-1">
                       <button
-                        onClick={() => setGroupBy("task")}
-                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
-                          groupBy === "task"
-                            ? "bg-white text-gray-900 shadow-sm"
-                            : "text-gray-600 hover:text-gray-900"
-                        }`}
-                      >
-                        <svg
-                          className="w-3.5 h-3.5"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M4 6h16M4 12h16M4 18h16"
-                          />
-                        </svg>
-                        <span>List View</span>
-                      </button>
-                      <button
                         onClick={() => setGroupBy("category")}
                         className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
                           groupBy === "category"
@@ -997,6 +1169,29 @@ function TableView({
                         </svg>
                         <span>Group by Category</span>
                       </button>
+                      <button
+                        onClick={() => setGroupBy("task")}
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                          groupBy === "task"
+                            ? "bg-white text-gray-900 shadow-sm"
+                            : "text-gray-600 hover:text-gray-900"
+                        }`}
+                      >
+                        <svg
+                          className="w-3.5 h-3.5"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M4 6h16M4 12h16M4 18h16"
+                          />
+                        </svg>
+                        <span>List View</span>
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -1009,24 +1204,33 @@ function TableView({
       {/* Simplified Table */}
       <div className="mx-auto p-3">
         <div className="bg-white rounded-lg shadow border overflow-hidden">
-          {groupedTasks.map((group, groupIdx) => (
-            <div key={group.category}>
-              {groupBy === "category" && (
-                <div className={`${getCategoryHeaderColor(group.category)} px-3 py-2 border-b`}>
-                  <h2 className="text-sm font-bold text-white">
-                    {group.category}
-                  </h2>
-                </div>
-              )}
+          {visibleProjects.length === 0 ? (
+            <div className="p-8 text-center text-sm text-gray-600">
+              No projects selected. Use the dropdown above to choose which projects to display.
+            </div>
+          ) : groupedTasks.length === 0 ? (
+            <div className="p-8 text-center text-sm text-gray-600">
+              No tasks match the current filters for the selected projects.
+            </div>
+          ) : (
+            groupedTasks.map((group, groupIdx) => (
+              <div key={group.category}>
+                {groupBy === "category" && (
+                  <div className={`${getCategoryHeaderColor(group.category)} px-3 py-2 border-b`}>
+                    <h2 className="text-sm font-bold text-white">
+                      {group.category}
+                    </h2>
+                  </div>
+                )}
 
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="bg-gray-800 border-b">
-                      <th className="px-3 py-2 text-left text-xs font-semibold text-white w-80 sticky left-0 bg-gray-800 z-10">
-                        Task
-                      </th>
-                      {paginatedProjects.map((project, idx) => {
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="bg-gray-800 border-b">
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-white w-80 sticky left-0 bg-gray-800 z-10">
+                          Task
+                        </th>
+                        {paginatedProjects.map((project, idx) => {
                         const globalIdx = startIndex + idx;
                         const isDragging = draggedProjectId === project.id;
                         const isDragOver = dragOverProjectId === project.id;
@@ -1141,14 +1345,14 @@ function TableView({
                             </div>
                           </th>
                         );
-                      })}
-                      <th className="px-2 py-2 text-center w-24 sticky right-0 bg-gray-800 z-10 text-white text-xs font-semibold border-l border-gray-700">
-                        Total
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y">
-                    {group.tasks.map((taskTemplate, idx) => {
+                        })}
+                        <th className="px-2 py-2 text-center w-24 sticky right-0 bg-gray-800 z-10 text-white text-xs font-semibold border-l border-gray-700">
+                          Total
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {group.tasks.map((taskTemplate, idx) => {
                       const stats = getTaskStats(taskTemplate.name);
                       const isEvenRow = idx % 2 === 0;
 
@@ -1464,12 +1668,13 @@ function TableView({
                           </td>
                         </tr>
                       );
-                    })}
-                  </tbody>
-                </table>
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            </div>
-          ))}
+            ))
+          )}
         </div>
       </div>
     </div>

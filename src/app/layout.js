@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata = {
-  title: "DeployTracker - Production Deployment Management",
+  title: "Horizon - Production Deployment Management",
   description: "Track critical production deployment steps across all your projects",
 };
 
