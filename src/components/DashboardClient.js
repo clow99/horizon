@@ -46,6 +46,7 @@ export default function DashboardClient({ initialProjects, session }) {
         .toISOString()
         .split("T")[0],
       status: "Planning",
+      project_type: projectType, // Store the project type
       tasks: tasks || [],
     };
 

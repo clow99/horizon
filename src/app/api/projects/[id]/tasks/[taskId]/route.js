@@ -15,7 +15,6 @@ function formatTaskRow(task) {
   if (!task) return null;
   return {
     ...task,
-    required: Boolean(task.required),
     completed_at: task.completed_at ? task.completed_at.toISOString() : null,
     updated_at: task.updated_at ? task.updated_at.toISOString() : null,
   };

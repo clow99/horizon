@@ -1,6 +1,7 @@
 "use client";
 import { useState, useRef, memo } from 'react';
 import { prepareProjectPayload } from '@/lib/client/prepareProjectPayload';
+import { PROJECT_TYPES } from '@/config/projectTypes';
 
 const statusOptions = [
   { value: 'Not Started', label: 'Not Started', color: 'gray' },
@@ -271,8 +272,21 @@ function ProjectChecklist({ project, onUpdate, onDelete, onModalStateChange }) {
       {/* Project Card - Clickable to open modal */}
       <div 
         onClick={() => updateModalState(true)}
-        className="bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden hover:shadow-lg transition-all duration-300 cursor-pointer hover:scale-[1.02]"
+        className="bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden hover:shadow-lg transition-all duration-300 cursor-pointer hover:scale-[1.02] relative"
       >
+        {/* Template Badge - Small and subtle in top right */}
+        {project.project_type && PROJECT_TYPES[project.project_type] && (
+          <div className="absolute top-3 right-3 z-10">
+            <div 
+              className="text-xs px-2 py-1 rounded bg-white/10 backdrop-blur-sm border border-white/20 text-white/70 flex items-center gap-1 shadow-sm"
+              title={PROJECT_TYPES[project.project_type].name}
+            >
+              <span className="text-[10px]">{PROJECT_TYPES[project.project_type].icon}</span>
+              <span className="font-medium opacity-90">{PROJECT_TYPES[project.project_type].name.split(' ')[0]}</span>
+            </div>
+          </div>
+        )}
+        
         {/* Project Header */}
         <div className="bg-gradient-to-r from-slate-800 to-slate-900 p-6">
           <div className="flex items-start justify-between mb-4">
@@ -545,6 +559,17 @@ function ProjectChecklist({ project, onUpdate, onDelete, onModalStateChange }) {
 
         {/* Progress Section */}
         <div className="space-y-3">
+          {/* Template Badge - Above progress */}
+          {project.project_type && PROJECT_TYPES[project.project_type] && (
+            <div className="flex items-center gap-2 text-sm mb-2">
+              <span className="text-gray-400">Template:</span>
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-700/50 border border-slate-600">
+                <span className="text-base">{PROJECT_TYPES[project.project_type].icon}</span>
+                <span className="text-white font-medium text-sm">{PROJECT_TYPES[project.project_type].name}</span>
+              </div>
+            </div>
+          )}
+          
           <div className="flex items-center justify-between text-sm">
             <span className="text-gray-300">Overall Progress</span>
             <span className="text-white font-semibold">

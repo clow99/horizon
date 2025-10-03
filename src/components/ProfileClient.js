@@ -5,6 +5,7 @@ import { signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Toast from "@/components/Toast";
+import Footer from "@/components/Footer";
 
 export default function ProfileClient({ user }) {
   const router = useRouter();
@@ -82,9 +83,10 @@ export default function ProfileClient({ user }) {
   };
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
-      {/* Header */}
-      <header className="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-50">
+    <>
+      <main className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
+        {/* Header */}
+        <header className="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-50">
         <div className="mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-6">
@@ -324,5 +326,9 @@ export default function ProfileClient({ user }) {
         />
       ))}
     </main>
+
+    {/* Footer */}
+    <Footer />
+  </>
   );
 }

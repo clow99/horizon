@@ -61,7 +61,7 @@ export default function CreateProjectModal({ isOpen, onClose, onCreate }) {
       description: newTask.description,
       category: newTask.category,
       status: newTask.status,
-      required: newTask.required,
+      
       notes: ''
     };
     
@@ -86,12 +86,6 @@ export default function CreateProjectModal({ isOpen, onClose, onCreate }) {
     if (confirm('Are you sure you want to remove this task?')) {
       setTasks(tasks.filter(task => task.id !== taskId));
     }
-  };
-
-  const handleToggleRequired = (taskId) => {
-    setTasks(tasks.map(task => 
-      task.id === taskId ? { ...task, required: !task.required } : task
-    ));
   };
 
   const handleCreate = () => {
@@ -252,18 +246,6 @@ export default function CreateProjectModal({ isOpen, onClose, onCreate }) {
                       </div>
                     </div>
 
-                    <div>
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={newTask.required}
-                          onChange={(e) => setNewTask({...newTask, required: e.target.checked})}
-                          className="w-4 h-4 text-blue-600 rounded"
-                        />
-                        <span className="text-sm text-gray-700">Required for deployment</span>
-                      </label>
-                    </div>
-
                     <div className="flex gap-2 pt-1">
                       <button
                         onClick={() => setShowAddTaskForm(false)}
@@ -370,11 +352,6 @@ export default function CreateProjectModal({ isOpen, onClose, onCreate }) {
                           <div className="flex-1">
                             <div className="flex items-center gap-2 mb-1">
                               <h4 className="text-sm font-semibold text-gray-900">{task.name}</h4>
-                              {task.required && (
-                                <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium">
-                                  Required
-                                </span>
-                              )}
                             </div>
                             <p className="text-xs text-gray-600 mb-2">{task.description}</p>
                             <div className="flex items-center gap-2">
@@ -387,15 +364,6 @@ export default function CreateProjectModal({ isOpen, onClose, onCreate }) {
                             </div>
                           </div>
                           <div className="flex gap-1">
-                            <button
-                              onClick={() => handleToggleRequired(task.id)}
-                              className="p-1.5 rounded-lg text-gray-600 hover:bg-gray-100 transition-colors"
-                              title={task.required ? 'Mark as optional' : 'Mark as required'}
-                            >
-                              <svg className={`w-4 h-4 ${task.required ? 'text-red-600' : 'text-gray-400'}`} fill="currentColor" viewBox="0 0 20 20">
-                                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v3.586L7.707 9.293a1 1 0 00-1.414 1.414l3 3a1 1 0 001.414 0l3-3a1 1 0 00-1.414-1.414L11 10.586V7z" clipRule="evenodd" />
-                              </svg>
-                            </button>
                             <button
                               onClick={() => setEditingTaskId(task.id)}
                               className="p-1.5 rounded-lg text-gray-600 hover:bg-blue-50 hover:text-blue-600 transition-colors"

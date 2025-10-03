@@ -147,9 +147,7 @@ export async function PUT(request, { params }) {
         return {
           name: taskRow.name,
           category: taskRow.category || null,
-          status: taskRow.status || 'Not Started',
-          required: Boolean(taskRow.required),
-          notes: taskRow.notes || null,
+          status: taskRow.status || 'Not Started'notes: taskRow.notes || null,
           completed_at: taskRow.completed_at
             ? (taskRow.completed_at instanceof Date
                 ? taskRow.completed_at.toISOString().slice(0, 19).replace('T', ' ')
@@ -169,9 +167,7 @@ export async function PUT(request, { params }) {
         const normalizedIncoming = {
           name: task.name,
           category: task.category || null,
-          status: task.status || 'Not Started',
-          required: Boolean(task.required),
-          notes: task.notes || null,
+          status: task.status || 'Not Started'notes: task.notes || null,
           completed_at: completedAt
         };
 
@@ -183,20 +179,18 @@ export async function PUT(request, { params }) {
             existingNormalized.name !== normalizedIncoming.name ||
             existingNormalized.category !== normalizedIncoming.category ||
             existingNormalized.status !== normalizedIncoming.status ||
-            existingNormalized.required !== normalizedIncoming.required ||
+            existingNormalized.required !==||
             existingNormalized.notes !== normalizedIncoming.notes ||
             existingNormalized.completed_at !== normalizedIncoming.completed_at;
 
           if (needsUpdate) {
             try {
               await query(
-                'UPDATE tasks SET name = ?, category = ?, status = ?, required = ?, notes = ?, completed_at = ?, updated_by_user_id = ?, updated_by_user_name = ?, updated_by_user_image = ? WHERE id = ?',
+                'UPDATE tasks SET name = ?, category = ?, status = ? = ?, notes = ?, completed_at = ?, updated_by_user_id = ?, updated_by_user_name = ?, updated_by_user_image = ? WHERE id = ?',
                 [
                   normalizedIncoming.name,
                   normalizedIncoming.category,
-                  normalizedIncoming.status,
-                  normalizedIncoming.required,
-                  normalizedIncoming.notes,
+                  normalizedIncoming.statusnormalizedIncoming.notes,
                   normalizedIncoming.completed_at,
                   session.user.id,
                   session.user.name || null,
@@ -208,13 +202,11 @@ export async function PUT(request, { params }) {
               if (dbError.code === 'ER_BAD_FIELD_ERROR') {
                 console.log('User tracking columns not available, using basic update');
                 await query(
-                  'UPDATE tasks SET name = ?, category = ?, status = ?, required = ?, notes = ?, completed_at = ? WHERE id = ?',
+                  'UPDATE tasks SET name = ?, category = ?, status = ? = ?, notes = ?, completed_at = ? WHERE id = ?',
                   [
                     normalizedIncoming.name,
                     normalizedIncoming.category,
-                    normalizedIncoming.status,
-                    normalizedIncoming.required,
-                    normalizedIncoming.notes,
+                    normalizedIncoming.statusnormalizedIncoming.notes,
                     normalizedIncoming.completed_at,
                     task.id
                   ]
@@ -233,15 +225,13 @@ export async function PUT(request, { params }) {
 
           try {
             await query(
-              'INSERT INTO tasks (id, project_id, name, category, status, required, notes, completed_at, updated_by_user_id, updated_by_user_name, updated_by_user_image) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+              'INSERT INTO tasks (id, project_id, name, category, status, notes, completed_at, updated_by_user_id, updated_by_user_name, updated_by_user_image) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
               [
                 taskId,
                 id,
                 normalizedIncoming.name,
                 normalizedIncoming.category,
-                normalizedIncoming.status,
-                normalizedIncoming.required,
-                normalizedIncoming.notes,
+                normalizedIncoming.statusnormalizedIncoming.notes,
                 normalizedIncoming.completed_at,
                 session.user.id,
                 session.user.name || null,
@@ -252,15 +242,13 @@ export async function PUT(request, { params }) {
             if (dbError.code === 'ER_BAD_FIELD_ERROR') {
               console.log('User tracking columns not available, using basic insert');
               await query(
-                'INSERT INTO tasks (id, project_id, name, category, status, required, notes, completed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                'INSERT INTO tasks (id, project_id, name, category, status, notes, completed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
                 [
                   taskId,
                   id,
                   normalizedIncoming.name,
                   normalizedIncoming.category,
-                  normalizedIncoming.status,
-                  normalizedIncoming.required,
-                  normalizedIncoming.notes,
+                  normalizedIncoming.statusnormalizedIncoming.notes,
                   normalizedIncoming.completed_at
                 ]
               );
@@ -295,9 +283,7 @@ export async function PUT(request, { params }) {
         .map(id => rowMap.get(id))
         .filter(Boolean)
         .map(task => ({
-          ...task,
-          required: Boolean(task.required),
-          completed_at: task.completed_at ? task.completed_at.toISOString() : null,
+          ...taskcompleted_at: task.completed_at ? task.completed_at.toISOString() : null,
           updated_at: task.updated_at ? task.updated_at.toISOString() : null
         }));
     }

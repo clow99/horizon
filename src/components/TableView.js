@@ -1339,111 +1339,14 @@ function TableView({
                             )}
 
                             <div className="flex flex-col items-center gap-1.5 relative z-10">
-                              {/* Project Name & Actions */}
-                              <div className="flex items-center gap-1">
-                                <div
-                                  className={`text-white text-sm font-semibold px-2 text-center line-clamp-2 transition-all ${
-                                    isDragOver ? "scale-105 text-white" : ""
-                                  }`}
-                                  title={project.name}
-                                >
-                                  {project.name}
-                                </div>
-                                {(onArchiveProject || onRestoreProject) && (
-                                  <button
-                                    type="button"
-                                    onClick={(event) => {
-                                      event.stopPropagation();
-                                      if (showArchived) {
-                                        if (onRestoreProject) {
-                                          const shouldRestore = confirm(
-                                            `Restore "${project.name}" to active projects?`
-                                          );
-                                          if (shouldRestore) {
-                                            onRestoreProject(project.id);
-                                          }
-                                        }
-                                      } else {
-                                        if (onArchiveProject) {
-                                          const shouldArchive = confirm(
-                                            `Archive "${project.name}"? You can restore it from the archived view.`
-                                          );
-                                          if (shouldArchive) {
-                                            onArchiveProject(project.id);
-                                          }
-                                        }
-                                      }
-                                    }}
-                                    className="inline-flex items-center justify-center rounded-md border border-white/30 bg-white/10 p-1 text-white hover:bg-white/20 hover:border-white transition-colors"
-                                    title={showArchived ? "Restore project" : "Archive project"}
-                                  >
-                                    {showArchived ? (
-                                      <svg
-                                        className="w-4 h-4"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        viewBox="0 0 24 24"
-                                      >
-                                        <path
-                                          strokeLinecap="round"
-                                          strokeLinejoin="round"
-                                          strokeWidth={2}
-                                          d="M4 7h16"
-                                        />
-                                        <path
-                                          strokeLinecap="round"
-                                          strokeLinejoin="round"
-                                          strokeWidth={2}
-                                          d="M6 7v11a1 1 0 001 1h10a1 1 0 001-1V7"
-                                        />
-                                        <path
-                                          strokeLinecap="round"
-                                          strokeLinejoin="round"
-                                          strokeWidth={2}
-                                          d="M12 21v-8"
-                                        />
-                                        <path
-                                          strokeLinecap="round"
-                                          strokeLinejoin="round"
-                                          strokeWidth={2}
-                                          d="M9 16l3-3 3 3"
-                                        />
-                                      </svg>
-                                    ) : (
-                                      <svg
-                                        className="w-4 h-4"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        viewBox="0 0 24 24"
-                                      >
-                                        <path
-                                          strokeLinecap="round"
-                                          strokeLinejoin="round"
-                                          strokeWidth={2}
-                                          d="M4 7h16"
-                                        />
-                                        <path
-                                          strokeLinecap="round"
-                                          strokeLinejoin="round"
-                                          strokeWidth={2}
-                                          d="M6 7v11a1 1 0 001 1h10a1 1 0 001-1V7"
-                                        />
-                                        <path
-                                          strokeLinecap="round"
-                                          strokeLinejoin="round"
-                                          strokeWidth={2}
-                                          d="M12 3v8"
-                                        />
-                                        <path
-                                          strokeLinecap="round"
-                                          strokeLinejoin="round"
-                                          strokeWidth={2}
-                                          d="M9 8l3 3 3-3"
-                                        />
-                                      </svg>
-                                    )}
-                                  </button>
-                                )}
+                              {/* Project Name */}
+                              <div
+                                className={`text-white text-sm font-semibold px-2 text-center line-clamp-2 transition-all ${
+                                  isDragOver ? "scale-105 text-white" : ""
+                                }`}
+                                title={project.name}
+                              >
+                                {project.name}
                               </div>
 
                               {/* Progress Indicator */}

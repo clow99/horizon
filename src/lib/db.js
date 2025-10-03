@@ -97,6 +97,52 @@ export async function initializeTables() {
       }
     }
 
+    // Add project_type column for existing installations
+    try {
+      await pool.execute(`
+        ALTER TABLE projects
+        ADD COLUMN project_type VARCHAR(50) NULL AFTER status
+      `);
+    } catch (error) {
+      if (error.code !== 'ER_DUP_FIELDNAME') {
+        throw error;
+      }
+    }
+
+    try {
+      await pool.execute(`
+        ALTER TABLE projects
+        ADD INDEX idx_project_type (project_type)
+      `);
+    } catch (error) {
+      if (error.code !== 'ER_DUP_KEYNAME') {
+        throw error;
+      }
+    }
+
+    // Add display_order column for custom project ordering
+    try {
+      await pool.execute(`
+        ALTER TABLE projects
+        ADD COLUMN display_order INT NULL AFTER project_type
+      `);
+    } catch (error) {
+      if (error.code !== 'ER_DUP_FIELDNAME') {
+        throw error;
+      }
+    }
+
+    try {
+      await pool.execute(`
+        ALTER TABLE projects
+        ADD INDEX idx_display_order (display_order)
+      `);
+    } catch (error) {
+      if (error.code !== 'ER_DUP_KEYNAME') {
+        throw error;
+      }
+    }
+
     // Create tasks table
     await pool.execute(`
       CREATE TABLE IF NOT EXISTS tasks (
@@ -105,7 +151,6 @@ export async function initializeTables() {
         name VARCHAR(255) NOT NULL,
         category VARCHAR(100),
         status VARCHAR(50) DEFAULT 'Not Started',
-        required BOOLEAN DEFAULT false,
         notes TEXT,
         completed_at TIMESTAMP NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -116,6 +161,18 @@ export async function initializeTables() {
         INDEX idx_status (status)
       )
     `);
+
+    // Remove required column if it exists (migration for existing installations)
+    try {
+      await pool.execute(`
+        ALTER TABLE tasks DROP COLUMN IF EXISTS required
+      `);
+    } catch (error) {
+      // Ignore if column doesn't exist
+      if (error.code !== 'ER_CANT_DROP_FIELD_OR_KEY') {
+        console.log('Note: required column may not exist (this is fine)');
+      }
+    }
 
     console.log('Database tables initialized successfully');
     return true;
