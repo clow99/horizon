@@ -1,4 +1,4 @@
-# Production Deployment Tracker
+# Horizon
 
 A professional SaaS-style application for tracking production deployment readiness across multiple projects. Built with Next.js, React, Tailwind CSS, and MySQL.
 

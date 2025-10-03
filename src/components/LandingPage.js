@@ -47,7 +47,7 @@ export default function LandingPage() {
                   </svg>
                 </div>
                 <h1 className="text-xl font-bold text-gray-900">
-                  Production Deployment Tracker
+                  Horizon
                 </h1>
               </div>
             </div>
@@ -896,7 +896,7 @@ export default function LandingPage() {
 
           <div className="border-t border-gray-200 pt-8 text-center">
             <p className="text-gray-600 text-sm">
-              © 2025 Production Deployment Tracker. Built with Next.js, MySQL &
+              © 2025 Horizon. Built with Next.js, MySQL &
               ❤️
             </p>
           </div>
