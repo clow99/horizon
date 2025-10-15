@@ -1,18 +1,20 @@
 "use client";
-import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
-import TableView from '@/components/TableView';
-import Toast from '@/components/Toast';
-import { mergeProjectUpdate } from '@/lib/client/mergeProjectUpdate';
-import { prepareProjectPayload } from '@/lib/client/prepareProjectPayload';
+import { useState, useRef, useCallback, useMemo, useEffect } from "react";
+import TableView from "@/components/TableView";
+import Toast from "@/components/Toast";
+import { mergeProjectUpdate } from "@/lib/client/mergeProjectUpdate";
+import { prepareProjectPayload } from "@/lib/client/prepareProjectPayload";
+import { useTheme } from "@/components/ThemeProvider";
 
 const normalizeProject = (project = {}) => ({
   ...project,
   archived: Boolean(project?.archived),
   archived_at: project?.archived_at || null,
-  tasks: Array.isArray(project?.tasks) ? project.tasks : []
+  tasks: Array.isArray(project?.tasks) ? project.tasks : [],
 });
 
 export default function TableClient({ initialProjects, session }) {
+  const { theme, toggleTheme } = useTheme();
   const [projects, setProjects] = useState(() =>
     (initialProjects || []).map(normalizeProject)
   );
@@ -22,37 +24,62 @@ export default function TableClient({ initialProjects, session }) {
   const [archivedLoaded, setArchivedLoaded] = useState(false);
 
   // Toast notification helper
-  const showToast = useCallback((message, type = 'error') => {
+  const showToast = useCallback((message, type = "error") => {
     const id = Date.now();
-    setToasts(prev => [...prev, { id, message, type }]);
+    setToasts((prev) => [...prev, { id, message, type }]);
   }, []);
 
   const removeToast = (id) => {
-    setToasts(prev => prev.filter(t => t.id !== id));
+    setToasts((prev) => prev.filter((t) => t.id !== id));
   };
 
   // Track in-flight updates per project to prevent concurrent updates to same project
   const projectUpdates = useRef(new Map());
 
-  const updateProject = useCallback(async (projectId, updatedProjectOrFunction) => {
-    console.log('TableClient.updateProject called:', { projectId, updatedProjectOrFunction: typeof updatedProjectOrFunction });
-    
-    // ALWAYS do optimistic update IMMEDIATELY (before waiting for any pending updates)
-    // This makes the UI feel instant
-    let updatedProject;
-    let taskUpdateMeta;
-    
-    if (typeof updatedProjectOrFunction === 'function') {
-      // Use functional update with latest state
-      setProjects(prevProjects => {
-        const currentProject = prevProjects.find(p => p.id === projectId);
-        if (!currentProject) {
-          console.error('Project not found:', projectId);
-          return prevProjects;
-        }
-        
-        updatedProject = normalizeProject(updatedProjectOrFunction(currentProject));
-        console.log('Functional update created:', updatedProject);
+  const updateProject = useCallback(
+    async (projectId, updatedProjectOrFunction) => {
+      console.log("TableClient.updateProject called:", {
+        projectId,
+        updatedProjectOrFunction: typeof updatedProjectOrFunction,
+      });
+
+      // ALWAYS do optimistic update IMMEDIATELY (before waiting for any pending updates)
+      // This makes the UI feel instant
+      let updatedProject;
+      let taskUpdateMeta;
+
+      if (typeof updatedProjectOrFunction === "function") {
+        // Use functional update with latest state
+        setProjects((prevProjects) => {
+          const currentProject = prevProjects.find((p) => p.id === projectId);
+          if (!currentProject) {
+            console.error("Project not found:", projectId);
+            return prevProjects;
+          }
+
+          updatedProject = normalizeProject(
+            updatedProjectOrFunction(currentProject)
+          );
+          console.log("Functional update created:", updatedProject);
+
+          if (updatedProject?.__taskUpdate) {
+            taskUpdateMeta = updatedProject.__taskUpdate;
+            delete updatedProject.__taskUpdate;
+            if (updatedProject.changedTaskIds) {
+              delete updatedProject.changedTaskIds;
+            }
+          }
+          return prevProjects.map((p) =>
+            p.id === projectId ? updatedProject : p
+          );
+        });
+      } else {
+        // Direct object update
+        updatedProject = updatedProjectOrFunction;
+        console.log(
+          "Direct object update - applying optimistically:",
+          updatedProject
+        );
 
         if (updatedProject?.__taskUpdate) {
           taskUpdateMeta = updatedProject.__taskUpdate;
@@ -61,194 +88,230 @@ export default function TableClient({ initialProjects, session }) {
             delete updatedProject.changedTaskIds;
           }
         }
-        return prevProjects.map(p => p.id === projectId ? updatedProject : p);
-      });
-    } else {
-      // Direct object update
-      updatedProject = updatedProjectOrFunction;
-      console.log('Direct object update - applying optimistically:', updatedProject);
 
-      if (updatedProject?.__taskUpdate) {
-        taskUpdateMeta = updatedProject.__taskUpdate;
-        delete updatedProject.__taskUpdate;
-        if (updatedProject.changedTaskIds) {
-          delete updatedProject.changedTaskIds;
-        }
-      }
-      
-      // Optimistic UI update (IMMEDIATE)
-      setProjects(prevProjects =>
-        prevProjects.map(p => (p.id === projectId ? normalizeProject(updatedProject) : p))
-      );
-    }
-
-    if (!updatedProject) {
-      console.error('Failed to create updatedProject, aborting');
-      return;
-    }
-
-    // NOW queue the API call (if another is in progress)
-    if (projectUpdates.current.has(projectId)) {
-      console.log('Project update already in progress, queuing API call:', projectId);
-      try {
-        await projectUpdates.current.get(projectId);
-        console.log('Previous update completed, proceeding with queued API call');
-      } catch (e) {
-        console.log('Previous update failed, proceeding anyway');
-      }
-    }
-
-    // Create a promise for this update
-    const updatePromise = (async () => {
-      try {
-        let response;
-        let payload;
-
-        if (taskUpdateMeta?.taskId) {
-          console.log('Making task-specific API call to:', `/api/projects/${projectId}/tasks/${taskUpdateMeta.taskId}`);
-          response = await fetch(`/api/projects/${projectId}/tasks/${taskUpdateMeta.taskId}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(taskUpdateMeta.updates || {})
-          });
-        } else {
-          console.log('Making API call to:', `/api/projects/${projectId}`);
-          console.log('Sending project data:', JSON.stringify(updatedProject, null, 2));
-          payload = prepareProjectPayload(updatedProject);
-
-          response = await fetch(`/api/projects/${projectId}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-          });
-        }
-
-        console.log('API response status:', response.status);
-        console.log('API response headers:', response.headers);
-        console.log('API response content-type:', response.headers.get('content-type'));
-        
-        // Clone the response so we can read it multiple times if needed
-        const responseClone = response.clone();
-        
-        if (!response.ok) {
-          let errorText = 'Unknown error';
-          try {
-            errorText = await response.text();
-          } catch (e) {
-            console.error('Could not read error response:', e);
-          }
-          console.error('API error response:', errorText);
-          throw new Error(`Failed to update project: ${response.status} - ${errorText}`);
-        }
-        
-        let updated;
-        try {
-          const textResponse = await responseClone.text();
-          console.log('Raw response body:', textResponse.substring(0, 200)); // Log first 200 chars
-          updated = JSON.parse(textResponse);
-        } catch (e) {
-          console.error('Failed to parse JSON response:', e);
-          try {
-            const responseText = await response.text();
-            console.error('Full response body:', responseText);
-          } catch (e2) {
-            console.error('Could not read response as text either:', e2);
-          }
-          throw new Error('Server returned invalid JSON');
-        }
-        console.log('API response data:', updated);
-        
-        setProjects(prevProjects =>
-          prevProjects.map(project =>
-            project.id === projectId
-              ? normalizeProject(mergeProjectUpdate(project, updated))
-              : project
+        // Optimistic UI update (IMMEDIATE)
+        setProjects((prevProjects) =>
+          prevProjects.map((p) =>
+            p.id === projectId ? normalizeProject(updatedProject) : p
           )
         );
-      } catch (e) {
-        console.error('=== ERROR IN UPDATE PROJECT ===');
-        console.error('Error type:', e.constructor.name);
-        console.error('Error message:', e.message);
-        console.error('Error stack:', e.stack);
-        console.error('Project ID:', projectId);
-        console.error('Updated project that was being sent:', updatedProject);
-        console.error('================================');
-        // On error, revert to the last known good state from the server
-        showToast('Failed to update project. Please refresh the page.', 'error');
-      } finally {
-        // Remove from in-flight updates
-        projectUpdates.current.delete(projectId);
       }
-    })();
 
-    // Track this update
-    projectUpdates.current.set(projectId, updatePromise);
-
-    return updatePromise;
-  }, [showToast]);
-
-  const saveProjectOrder = useCallback(async (projectIds) => {
-    try {
-      const response = await fetch('/api/projects/order', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectOrder: projectIds })
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to save project order');
+      if (!updatedProject) {
+        console.error("Failed to create updatedProject, aborting");
+        return;
       }
-      
-      console.log('Project order saved successfully');
-    } catch (error) {
-      console.error('Error saving project order:', error);
-      showToast('Failed to save project order. Changes may not persist.', 'error');
-    }
-  }, [showToast]);
 
-  const reorderProjects = useCallback((reorderedActiveProjects) => {
-    console.log('TableClient.reorderProjects called:', reorderedActiveProjects);
+      // NOW queue the API call (if another is in progress)
+      if (projectUpdates.current.has(projectId)) {
+        console.log(
+          "Project update already in progress, queuing API call:",
+          projectId
+        );
+        try {
+          await projectUpdates.current.get(projectId);
+          console.log(
+            "Previous update completed, proceeding with queued API call"
+          );
+        } catch (e) {
+          console.log("Previous update failed, proceeding anyway");
+        }
+      }
 
-    setProjects(prevProjects => {
-      const activeIds = reorderedActiveProjects.map(p => p.id);
-      const activeMap = new Map(
-        reorderedActiveProjects.map(project => [project.id, normalizeProject(project)])
+      // Create a promise for this update
+      const updatePromise = (async () => {
+        try {
+          let response;
+          let payload;
+
+          if (taskUpdateMeta?.taskId) {
+            console.log(
+              "Making task-specific API call to:",
+              `/api/projects/${projectId}/tasks/${taskUpdateMeta.taskId}`
+            );
+            response = await fetch(
+              `/api/projects/${projectId}/tasks/${taskUpdateMeta.taskId}`,
+              {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(taskUpdateMeta.updates || {}),
+              }
+            );
+          } else {
+            console.log("Making API call to:", `/api/projects/${projectId}`);
+            console.log(
+              "Sending project data:",
+              JSON.stringify(updatedProject, null, 2)
+            );
+            payload = prepareProjectPayload(updatedProject);
+
+            response = await fetch(`/api/projects/${projectId}`, {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload),
+            });
+          }
+
+          console.log("API response status:", response.status);
+          console.log("API response headers:", response.headers);
+          console.log(
+            "API response content-type:",
+            response.headers.get("content-type")
+          );
+
+          // Clone the response so we can read it multiple times if needed
+          const responseClone = response.clone();
+
+          if (!response.ok) {
+            let errorText = "Unknown error";
+            try {
+              errorText = await response.text();
+            } catch (e) {
+              console.error("Could not read error response:", e);
+            }
+            console.error("API error response:", errorText);
+            throw new Error(
+              `Failed to update project: ${response.status} - ${errorText}`
+            );
+          }
+
+          let updated;
+          try {
+            const textResponse = await responseClone.text();
+            console.log("Raw response body:", textResponse.substring(0, 200)); // Log first 200 chars
+            updated = JSON.parse(textResponse);
+          } catch (e) {
+            console.error("Failed to parse JSON response:", e);
+            try {
+              const responseText = await response.text();
+              console.error("Full response body:", responseText);
+            } catch (e2) {
+              console.error("Could not read response as text either:", e2);
+            }
+            throw new Error("Server returned invalid JSON");
+          }
+          console.log("API response data:", updated);
+
+          setProjects((prevProjects) =>
+            prevProjects.map((project) =>
+              project.id === projectId
+                ? normalizeProject(mergeProjectUpdate(project, updated))
+                : project
+            )
+          );
+        } catch (e) {
+          console.error("=== ERROR IN UPDATE PROJECT ===");
+          console.error("Error type:", e.constructor.name);
+          console.error("Error message:", e.message);
+          console.error("Error stack:", e.stack);
+          console.error("Project ID:", projectId);
+          console.error("Updated project that was being sent:", updatedProject);
+          console.error("================================");
+          // On error, revert to the last known good state from the server
+          showToast(
+            "Failed to update project. Please refresh the page.",
+            "error"
+          );
+        } finally {
+          // Remove from in-flight updates
+          projectUpdates.current.delete(projectId);
+        }
+      })();
+
+      // Track this update
+      projectUpdates.current.set(projectId, updatePromise);
+
+      return updatePromise;
+    },
+    [showToast]
+  );
+
+  const saveProjectOrder = useCallback(
+    async (projectIds) => {
+      try {
+        const response = await fetch("/api/projects/order", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ projectOrder: projectIds }),
+        });
+
+        if (!response.ok) {
+          throw new Error("Failed to save project order");
+        }
+
+        console.log("Project order saved successfully");
+      } catch (error) {
+        console.error("Error saving project order:", error);
+        showToast(
+          "Failed to save project order. Changes may not persist.",
+          "error"
+        );
+      }
+    },
+    [showToast]
+  );
+
+  const reorderProjects = useCallback(
+    (reorderedActiveProjects) => {
+      console.log(
+        "TableClient.reorderProjects called:",
+        reorderedActiveProjects
       );
 
-      const activeProjects = prevProjects
-        .filter(project => !project.archived && activeIds.includes(project.id))
-        .map(project => normalizeProject(project));
+      setProjects((prevProjects) => {
+        const activeIds = reorderedActiveProjects.map((p) => p.id);
+        const activeMap = new Map(
+          reorderedActiveProjects.map((project) => [
+            project.id,
+            normalizeProject(project),
+          ])
+        );
 
-      const reorderedActive = activeIds.map(id => activeMap.get(id) || activeProjects.find(p => p.id === id)).filter(Boolean);
-      const archivedProjects = prevProjects.filter(project => project.archived).map(normalizeProject);
+        const activeProjects = prevProjects
+          .filter(
+            (project) => !project.archived && activeIds.includes(project.id)
+          )
+          .map((project) => normalizeProject(project));
 
-      return [...reorderedActive, ...archivedProjects];
-    });
+        const reorderedActive = activeIds
+          .map(
+            (id) => activeMap.get(id) || activeProjects.find((p) => p.id === id)
+          )
+          .filter(Boolean);
+        const archivedProjects = prevProjects
+          .filter((project) => project.archived)
+          .map(normalizeProject);
 
-    const projectIds = reorderedActiveProjects.map(p => p.id);
-    saveProjectOrder(projectIds);
-  }, [saveProjectOrder]);
+        return [...reorderedActive, ...archivedProjects];
+      });
 
-  const toggleArchive = useCallback(async (projectId, shouldArchive) => {
-    await updateProject(projectId, (currentProject) => ({
-      ...currentProject,
-      archived: shouldArchive,
-      archived_at: shouldArchive
-        ? new Date().toISOString()
-        : null
-    }));
-    if (shouldArchive) {
-      setArchivedLoaded(true);
-    }
-  }, [updateProject]);
+      const projectIds = reorderedActiveProjects.map((p) => p.id);
+      saveProjectOrder(projectIds);
+    },
+    [saveProjectOrder]
+  );
+
+  const toggleArchive = useCallback(
+    async (projectId, shouldArchive) => {
+      await updateProject(projectId, (currentProject) => ({
+        ...currentProject,
+        archived: shouldArchive,
+        archived_at: shouldArchive ? new Date().toISOString() : null,
+      }));
+      if (shouldArchive) {
+        setArchivedLoaded(true);
+      }
+    },
+    [updateProject]
+  );
 
   const activeProjects = useMemo(
-    () => projects.filter(project => !project.archived),
+    () => projects.filter((project) => !project.archived),
     [projects]
   );
 
   const archivedProjects = useMemo(
-    () => projects.filter(project => project.archived),
+    () => projects.filter((project) => project.archived),
     [projects]
   );
 
@@ -259,15 +322,17 @@ export default function TableClient({ initialProjects, session }) {
 
     setIsLoadingArchived(true);
     try {
-      const response = await fetch('/api/projects?archived=only');
+      const response = await fetch("/api/projects?archived=only");
       if (!response.ok) {
-        throw new Error('Failed to load archived projects');
+        throw new Error("Failed to load archived projects");
       }
 
       const archivedProjectList = await response.json();
-      setProjects(prevProjects => {
-        const projectMap = new Map(prevProjects.map(project => [project.id, project]));
-        archivedProjectList.forEach(project => {
+      setProjects((prevProjects) => {
+        const projectMap = new Map(
+          prevProjects.map((project) => [project.id, project])
+        );
+        archivedProjectList.forEach((project) => {
           const normalized = normalizeProject(project);
           projectMap.set(normalized.id, normalized);
         });
@@ -276,7 +341,10 @@ export default function TableClient({ initialProjects, session }) {
       setArchivedLoaded(true);
     } catch (error) {
       console.error(error);
-      showToast('Unable to load archived projects. Please try again later.', 'error');
+      showToast(
+        "Unable to load archived projects. Please try again later.",
+        "error"
+      );
     } finally {
       setIsLoadingArchived(false);
     }
@@ -292,11 +360,11 @@ export default function TableClient({ initialProjects, session }) {
 
   return (
     <>
-      <TableView 
+      <TableView
         projects={displayedProjects}
-        onUpdateProject={updateProject} 
+        onUpdateProject={updateProject}
         onReorderProjects={reorderProjects}
-        session={session} 
+        session={session}
         totalProjectsCount={projects.length}
         activeProjectsCount={activeProjects.length}
         archivedProjectsCount={archivedProjects.length}
@@ -307,9 +375,9 @@ export default function TableClient({ initialProjects, session }) {
         onRestoreProject={(projectId) => toggleArchive(projectId, false)}
         isLoadingArchived={isLoadingArchived}
       />
-      
+
       {/* Toast Notifications */}
-      {toasts.map(toast => (
+      {toasts.map((toast) => (
         <Toast
           key={toast.id}
           message={toast.message}

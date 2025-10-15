@@ -2,9 +2,9 @@ import Link from "next/link";
 
 export default function Footer() {
   const currentYear = new Date().getFullYear();
-  
+
   return (
-    <footer className="bg-white border-t border-gray-200 mt-auto w-full">
+    <footer className="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 mt-auto w-full">
       <div className="px-6 py-8">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-6">
           {/* Brand Section */}
@@ -25,60 +25,121 @@ export default function Footer() {
                   />
                 </svg>
               </div>
-              <span className="font-bold text-gray-900 text-lg">Horizon</span>
+              <span className="font-bold text-gray-900 dark:text-white text-lg">
+                Horizon
+              </span>
             </div>
-            <p className="text-gray-600 text-sm leading-relaxed">
+            <p className="text-gray-600 dark:text-gray-400 text-sm leading-relaxed">
               Professional deployment management for modern development teams.
             </p>
           </div>
 
           {/* Features Column */}
           <div>
-            <h4 className="font-semibold text-gray-900 mb-3 text-sm">Features</h4>
-            <ul className="space-y-2 text-sm text-gray-600">
-              <li className="hover:text-blue-600 transition-colors cursor-pointer">Dashboard View</li>
-              <li className="hover:text-blue-600 transition-colors cursor-pointer">Table View</li>
-              <li className="hover:text-blue-600 transition-colors cursor-pointer">Drag & Drop</li>
-              <li className="hover:text-blue-600 transition-colors cursor-pointer">Team Tracking</li>
+            <h4 className="font-semibold text-gray-900 dark:text-white mb-3 text-sm">
+              Features
+            </h4>
+            <ul className="space-y-2 text-sm text-gray-600 dark:text-gray-400">
+              <li className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors cursor-pointer">
+                Dashboard View
+              </li>
+              <li className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors cursor-pointer">
+                Table View
+              </li>
+              <li className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors cursor-pointer">
+                Drag & Drop
+              </li>
+              <li className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors cursor-pointer">
+                Team Tracking
+              </li>
             </ul>
           </div>
 
           {/* Categories Column */}
           <div>
-            <h4 className="font-semibold text-gray-900 mb-3 text-sm">Categories</h4>
-            <ul className="space-y-2 text-sm text-gray-600">
-              <li className="hover:text-blue-600 transition-colors cursor-pointer">Infrastructure</li>
-              <li className="hover:text-blue-600 transition-colors cursor-pointer">Security</li>
-              <li className="hover:text-blue-600 transition-colors cursor-pointer">Monitoring</li>
-              <li className="hover:text-blue-600 transition-colors cursor-pointer">DevOps</li>
+            <h4 className="font-semibold text-gray-900 dark:text-white mb-3 text-sm">
+              Categories
+            </h4>
+            <ul className="space-y-2 text-sm text-gray-600 dark:text-gray-400">
+              <li className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors cursor-pointer">
+                Infrastructure
+              </li>
+              <li className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors cursor-pointer">
+                Security
+              </li>
+              <li className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors cursor-pointer">
+                Monitoring
+              </li>
+              <li className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors cursor-pointer">
+                DevOps
+              </li>
             </ul>
           </div>
 
           {/* Resources Column */}
           <div>
-            <h4 className="font-semibold text-gray-900 mb-3 text-sm">Resources</h4>
-            <ul className="space-y-2 text-sm text-gray-600">
-              <li><Link href="/docs" className="hover:text-blue-600 transition-colors">Documentation</Link></li>
-              <li><Link href="/support" className="hover:text-blue-600 transition-colors">Support</Link></li>
-              <li><Link href="/privacy" className="hover:text-blue-600 transition-colors">Privacy Policy</Link></li>
-              <li><Link href="/terms" className="hover:text-blue-600 transition-colors">Terms of Service</Link></li>
+            <h4 className="font-semibold text-gray-900 dark:text-white mb-3 text-sm">
+              Resources
+            </h4>
+            <ul className="space-y-2 text-sm text-gray-600 dark:text-gray-400">
+              <li>
+                <Link
+                  href="/docs"
+                  className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                >
+                  Documentation
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href="/support"
+                  className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                >
+                  Support
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href="/privacy"
+                  className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                >
+                  Privacy Policy
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href="/terms"
+                  className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                >
+                  Terms of Service
+                </Link>
+              </li>
             </ul>
           </div>
         </div>
 
         {/* Bottom Bar */}
-        <div className="border-t border-gray-200 pt-6 flex flex-col md:flex-row justify-between items-center gap-4">
-          <p className="text-gray-600 text-sm">
+        <div className="border-t border-gray-200 dark:border-gray-700 pt-6 flex flex-col md:flex-row justify-between items-center gap-4">
+          <p className="text-gray-600 dark:text-gray-400 text-sm">
             © {currentYear} Horizon. Built with Next.js, MySQL & ❤️
           </p>
           <div className="flex items-center gap-6">
-            <Link href="/status" className="text-gray-600 hover:text-blue-600 transition-colors text-sm">
+            <Link
+              href="/status"
+              className="text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-sm"
+            >
               Status
             </Link>
-            <Link href="/api-docs" className="text-gray-600 hover:text-blue-600 transition-colors text-sm">
+            <Link
+              href="/api-docs"
+              className="text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-sm"
+            >
               API
             </Link>
-            <Link href="/changelog" className="text-gray-600 hover:text-blue-600 transition-colors text-sm">
+            <Link
+              href="/changelog"
+              className="text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-sm"
+            >
               Changelog
             </Link>
           </div>
