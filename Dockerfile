@@ -3,10 +3,13 @@ FROM ubuntu:24.04 AS builder
 
 # Install Node.js and sendmail
 RUN apt-get update \
-    && apt-get install -y --fix-missing curl ca-certificates sendmail \
+    && apt-get install -y --fix-missing curl ca-certificates sendmail build-essential python3 make g++ \
     && curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
     && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
+
+# Ensure native modules like better-sqlite3 are compiled against this Node version
+ENV npm_config_build_from_source=true
 
 WORKDIR /app
 COPY package.json package-lock.json ./
