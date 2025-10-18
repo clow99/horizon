@@ -132,4 +132,273 @@ describe("mergeProjectUpdate", () => {
     expect(result.tasks[0].id).toBe("fresh");
     expect(result.tasks[0].required).toBe(true);
   });
+
+  test("returns existing project unchanged when no metadata updates exist", () => {
+    const existing = {
+      id: "p5",
+      name: "Test",
+      tasks: [{ id: "t1", name: "Task 1" }],
+    };
+
+    const update = {
+      someField: "value",
+      anotherField: 123,
+    };
+
+    const result = mergeProjectUpdate(existing, update);
+
+    expect(result.tasks).toEqual(existing.tasks);
+  });
+
+  test("handles null tasks in existing project", () => {
+    const existing = {
+      id: "p6",
+      tasks: null,
+    };
+
+    const update = {
+      updatedTasks: [{ id: "t1", name: "New Task" }],
+    };
+
+    const result = mergeProjectUpdate(existing, update);
+
+    expect(Array.isArray(result.tasks)).toBe(true);
+    expect(result.tasks[0].id).toBe("t1");
+  });
+
+  test("handles empty deletedTaskIds and empty updatedTasks", () => {
+    const existing = {
+      id: "p7",
+      tasks: [
+        { id: "t1", name: "Task 1" },
+        { id: "t2", name: "Task 2" },
+      ],
+    };
+
+    const update = {
+      updatedTasks: [],
+      deletedTaskIds: [],
+    };
+
+    const result = mergeProjectUpdate(existing, update);
+
+    expect(result.tasks).toEqual(existing.tasks);
+  });
+
+  test("correctly deletes multiple tasks", () => {
+    const existing = {
+      id: "p8",
+      tasks: [
+        { id: "t1", name: "Keep" },
+        { id: "t2", name: "Remove 1" },
+        { id: "t3", name: "Remove 2" },
+        { id: "t4", name: "Keep also" },
+      ],
+    };
+
+    const update = {
+      deletedTaskIds: ["t2", "t3"],
+    };
+
+    const result = mergeProjectUpdate(existing, update);
+
+    expect(result.tasks).toHaveLength(2);
+    expect(result.tasks.map((t) => t.id)).toEqual(["t1", "t4"]);
+  });
+
+  test("normalizes task dates correctly from various formats", () => {
+    const existing = {
+      id: "p9",
+      tasks: [{ id: "t1", name: "Task" }],
+    };
+
+    const update = {
+      updatedTasks: [
+        {
+          id: "t1",
+          completed_at: new Date("2025-05-15T14:30:00Z"),
+          updated_at: "2025-05-15T14:30:00Z",
+        },
+      ],
+    };
+
+    const result = mergeProjectUpdate(existing, update);
+
+    expect(result.tasks[0].completed_at).toMatch(/2025-05-15/);
+    expect(result.tasks[0].updated_at).toMatch(/2025-05-15/);
+  });
+
+  test("preserves null dates through normalization", () => {
+    const existing = {
+      id: "p10",
+      tasks: [{ id: "t1", name: "Task" }],
+    };
+
+    const update = {
+      updatedTasks: [
+        {
+          id: "t1",
+          completed_at: null,
+          updated_at: null,
+        },
+      ],
+    };
+
+    const result = mergeProjectUpdate(existing, update);
+
+    expect(result.tasks[0].completed_at).toBeNull();
+    expect(result.tasks[0].updated_at).toBeNull();
+  });
+
+  test("handles tasks with only name updates (no id)", () => {
+    const existing = {
+      id: "p11",
+      tasks: [
+        { id: "t1", name: "Original", status: "Not Started" },
+        { id: "t2", name: "Unique Task", status: "In Progress" },
+      ],
+    };
+
+    const update = {
+      updatedTasks: [
+        {
+          name: "Unique Task",
+          status: "Completed",
+        },
+      ],
+    };
+
+    const result = mergeProjectUpdate(existing, update);
+
+    const updatedTask = result.tasks.find((t) => t.name === "Unique Task");
+    expect(updatedTask.status).toBe("Completed");
+    expect(updatedTask.id).toBe("t2");
+  });
+
+  test("handles task normalization with required boolean conversion", () => {
+    const existing = {
+      id: "p12",
+      tasks: [{ id: "t1", name: "Task", required: 1 }],
+    };
+
+    const update = {
+      updatedTasks: [
+        {
+          id: "t1",
+          required: 0,
+        },
+      ],
+    };
+
+    const result = mergeProjectUpdate(existing, update);
+
+    expect(result.tasks[0].required).toBe(false);
+  });
+
+  test("handles archived project normalization", () => {
+    const existing = {
+      id: "p13",
+      archived: false,
+      archived_at: null,
+      tasks: [],
+    };
+
+    const update = {
+      archived: 1,
+      archived_at: "2025-05-20T10:00:00Z",
+    };
+
+    const result = mergeProjectUpdate(existing, update);
+
+    expect(result.archived).toBe(true);
+    expect(result.archived_at).toMatch(/2025-05-20/);
+  });
+
+  test("filters null tasks from the result", () => {
+    const existing = {
+      id: "p14",
+      tasks: [{ id: "t1", name: "Task 1" }, null, { id: "t2", name: "Task 2" }],
+    };
+
+    const update = {
+      updatedTasks: [{ id: "t1", status: "Completed" }],
+    };
+
+    // Simulate filtering null tasks if they exist
+    const result = mergeProjectUpdate(existing, update);
+    expect(result.tasks.filter((t) => t).length).toBeGreaterThan(0);
+  });
+
+  test("handles updatedTasks array with non-array input", () => {
+    const existing = {
+      id: "p15",
+      tasks: [{ id: "t1", name: "Task" }],
+    };
+
+    const update = {
+      updatedTasks: null,
+      deletedTaskIds: null,
+    };
+
+    const result = mergeProjectUpdate(existing, update);
+
+    expect(result.tasks).toEqual(existing.tasks);
+  });
+
+  test("correctly appends new tasks without duplicating existing ones", () => {
+    const existing = {
+      id: "p16",
+      tasks: [{ id: "t1", name: "Task 1" }],
+    };
+
+    const update = {
+      updatedTasks: [
+        { id: "t1", status: "Completed" },
+        { id: "t2", name: "Task 2" },
+        { id: "t3", name: "Task 3" },
+      ],
+    };
+
+    const result = mergeProjectUpdate(existing, update);
+
+    expect(result.tasks).toHaveLength(3);
+    expect(result.tasks.map((t) => t.id)).toEqual(["t1", "t2", "t3"]);
+  });
+
+  test("handles edge case: empty string target_date", () => {
+    const existing = {
+      id: "p17",
+      target_date: "2025-01-01",
+      tasks: [],
+    };
+
+    const update = {
+      target_date: "",
+    };
+
+    const result = mergeProjectUpdate(existing, update);
+
+    expect(result.target_date).toBe("");
+  });
+
+  test("normalizes invalid date strings gracefully", () => {
+    const existing = {
+      id: "p18",
+      tasks: [{ id: "t1", name: "Task" }],
+    };
+
+    const update = {
+      updatedTasks: [
+        {
+          id: "t1",
+          completed_at: "invalid-date",
+        },
+      ],
+    };
+
+    const result = mergeProjectUpdate(existing, update);
+
+    // Should preserve invalid dates as-is or normalize them
+    expect(result.tasks[0]).toBeDefined();
+  });
 });

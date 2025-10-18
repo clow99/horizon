@@ -12,28 +12,28 @@
 
 ## 3. Unit & Component Coverage
 
-- [ ] 3.1 Add React Testing Library coverage for `CreateProjectModal` (multi-step flow, custom task add/remove) and ensure state resets on close.
-- [ ] 3.2 Cover dashboard progress logic (`DashboardClient` or dedicated hooks) verifying percent calculations, archived filtering, and optimistic updates.
-- [ ] 3.3 Add tests for profile widgets (`ProfileClient` or related components) validating display of user metadata and edit affordances.
-- [ ] 3.4 Increase utility coverage for `src/lib/client/mergeProjectUpdate.js` edge cases (partial updates, task merging) to reach 95% for that module.
+- [x] 3.1 Add React Testing Library coverage for `CreateProjectModal` (multi-step flow, custom task add/remove) and ensure state resets on close.
+- [x] 3.2 Cover dashboard progress logic (`DashboardClient` or dedicated hooks) verifying percent calculations, archived filtering, and optimistic updates.
+- [x] 3.3 Add tests for profile widgets (`ProfileClient` or related components) validating display of user metadata and edit affordances.
+- [x] 3.4 Increase utility coverage for `src/lib/client/mergeProjectUpdate.js` edge cases (partial updates, task merging) to reach 95% for that module.
 
 ## 4. Integration Tests
 
-- [ ] 4.1 Create `tests/integration/api/projects.test.js` covering GET (with archived filters) and POST (with tasks) using auth mocks and SQLite harness.
-- [ ] 4.2 Add `tests/integration/api/project-update.test.js` validating PUT/DELETE behavior, task synchronization (create/update/delete), and authorization failures.
-- [ ] 4.3 Add `tests/integration/api/task-status.test.js` covering PATCH updates, required field validation, and audit metadata persistence.
-- [ ] 4.4 Add `tests/integration/api/project-order.test.js` verifying reorder logic, ownership enforcement, and invalid payload handling.
-- [ ] 4.5 Cover NextAuth callbacks (`src/auth.js`) to ensure new/existing users are handled correctly under SQLite; mock query responses where necessary.
+- [x] 4.1 Create `tests/integration/api/projects.test.js` covering GET (with archived filters) and POST (with tasks) using auth mocks and SQLite harness.
+- [x] 4.2 Add `tests/integration/api/project-update.test.js` validating PUT/DELETE behavior, task synchronization (create/update/delete), and authorization failures.
+- [x] 4.3 Add `tests/integration/api/task-status.test.js` covering PATCH updates, required field validation, and audit metadata persistence.
+- [x] 4.4 Add `tests/integration/api/project-order.test.js` verifying reorder logic, ownership enforcement, and invalid payload handling.
+- [x] 4.5 Cover NextAuth callbacks (`src/auth.js`) to ensure new/existing users are handled correctly under SQLite; mock query responses where necessary.
 
 ## 5. End-to-End Flows
 
-- [ ] 5.1 Introduce a test-only login helper route or Playwright fixture that seeds a user/session, then write an auth flow spec that lands on the dashboard.
-- [ ] 5.2 Implement a Playwright spec that creates a project from a template, verifies preset tasks, toggles statuses, and observes progress updates.
-- [ ] 5.3 Add a Playwright spec for archiving/restoring a project and ensuring it disappears/reappears in the dashboard and table view.
-- [ ] 5.4 Add a Playwright spec for drag-and-drop project reordering (or equivalent UI interaction), verifying persisted order via API.
+- [x] 5.1 Introduce a test-only login helper route or Playwright fixture that seeds a user/session, then write an auth flow spec that lands on the dashboard.
+- [x] 5.2 Implement a Playwright spec that creates a project from a template, verifies preset tasks, toggles statuses, and observes progress updates.
+- [x] 5.3 Add a Playwright spec for archiving/restoring a project and ensuring it disappears/reappears in the dashboard and table view.
+- [x] 5.4 Add a Playwright spec for drag-and-drop project reordering (or equivalent UI interaction), verifying persisted order via API.
 
 ## 6. Documentation & Finalization
 
-- [ ] 6.1 Update `TESTING_GUIDE.md` and `README.md` with new commands, auth stubs, CI tips, and troubleshooting.
-- [ ] 6.2 Add `.gitignore` entries for new artifacts (Playwright traces, screenshots) if missing.
-- [ ] 6.3 Run `npm run test:unit`, `npm run test:integration`, `npm run test:e2e`, and `npm run build` to confirm all suites pass and coverage thresholds are satisfied.
+- [x] 6.1 Update `TESTING_GUIDE.md` and `README.md` with new commands, auth stubs, CI tips, and troubleshooting.
+- [x] 6.2 Add `.gitignore` entries for new artifacts (Playwright traces, screenshots) if missing.
+- [x] 6.3 Run `npm run test:unit`, `npm run test:integration`, `npm run test:e2e`, and `npm run build` to confirm all suites pass and coverage thresholds are satisfied.
