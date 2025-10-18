@@ -32,6 +32,40 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
+/* Custom scrollbar styling (applied to elements with .scrollbar) */
+.scrollbar {
+  scrollbar-width: thin; /* Firefox */
+  scrollbar-color: #9ca3af #f3f4f6; /* thumb track */
+}
+
+.scrollbar::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.scrollbar::-webkit-scrollbar-track {
+  background: #f3f4f6; /* gray-100 */
+}
+
+.scrollbar::-webkit-scrollbar-thumb {
+  background-color: #9ca3af; /* gray-400 */
+  border-radius: 8px;
+  border: 2px solid #f3f4f6; /* match track */
+}
+
+.dark .scrollbar {
+  scrollbar-color: #4b5563 #1f2937; /* gray-600 thumb on gray-800 track */
+}
+
+.dark .scrollbar::-webkit-scrollbar-track {
+  background: #1f2937; /* gray-800 */
+}
+
+.dark .scrollbar::-webkit-scrollbar-thumb {
+  background-color: #4b5563; /* gray-600 */
+  border: 2px solid #1f2937; /* match dark track */
+}
+
 @keyframes slide-in-right {
   from {
     transform: translateX(100%);

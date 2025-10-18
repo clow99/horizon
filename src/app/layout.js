@@ -1,4 +1,5 @@
 import { Geist, Geist_Mono } from "next/font/google";
+import Script from "next/script";
 import AuthProvider from "@/components/AuthProvider";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import "./globals.css";
@@ -18,6 +19,9 @@ export const metadata = {
   description:
     "Track critical production deployment steps across all your projects",
 };
+
+const UMAMI_URL = process.env.NEXT_PUBLIC_UMAMI_URL;
+const UMAMI_WEBSITE_ID = process.env.NEXT_PUBLIC_UMAMI_WEBSITE_ID;
 
 export default function RootLayout({ children }) {
   return (
@@ -46,6 +50,13 @@ export default function RootLayout({ children }) {
             `,
           }}
         />
+        {UMAMI_URL && UMAMI_WEBSITE_ID ? (
+          <Script
+            src={`${UMAMI_URL.replace(/\/$/, "")}/script.js`}
+            data-website-id={UMAMI_WEBSITE_ID}
+            strategy="afterInteractive"
+          />
+        ) : null}
       </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}

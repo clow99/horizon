@@ -178,7 +178,7 @@ export default function CreateProjectModal({ isOpen, onClose, onCreate }) {
         </div>
 
         {/* Modal Body */}
-        <div className="overflow-y-auto max-h-[calc(90vh-180px)] p-6">
+        <div className="overflow-y-auto max-h-[calc(90vh-180px)] p-6 scrollbar">
           {step === 1 ? (
             // Step 1: Select Project Type
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

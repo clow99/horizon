@@ -15,7 +15,10 @@ export default function PageLayout({ children, title }) {
         <header className="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-50">
           <div className="mx-auto px-6 py-4">
             <div className="flex items-center justify-between">
-              <Link href={session ? "/dashboard" : "/"} className="flex items-center gap-3">
+              <Link
+                href={session ? "/dashboard" : "/"}
+                className="flex items-center gap-3"
+              >
                 <div className="bg-gradient-to-br from-blue-500 to-indigo-600 p-2 rounded-lg shadow-md">
                   <svg
                     className="w-6 h-6 text-white"
@@ -61,6 +64,7 @@ export default function PageLayout({ children, title }) {
                         alt={session.user.name || "User"}
                         width={32}
                         height={32}
+                        unoptimized
                         className="rounded-full"
                       />
                     )}
