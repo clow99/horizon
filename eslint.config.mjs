@@ -23,6 +23,10 @@ const eslintConfig = [
       "out/**",
       "build/**",
       "next-env.d.ts",
+      // Exclude tests from production build linting
+      "tests/**",
+      "**/__tests__/**",
+      "**/*.test.js",
     ],
   },
 ];

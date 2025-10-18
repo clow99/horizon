@@ -37,7 +37,7 @@ module.exports = {
     },
   },
   transform: {
-    "^.+\\.(js|jsx)$": ["babel-jest", { configFile: "./babel.config.cjs" }],
+    "^.+\\.(js|jsx)$": ["babel-jest", { configFile: "./babel.jest.config.js" }],
   },
   moduleFileExtensions: ["js", "jsx", "json"],
   testTimeout: 10000,
