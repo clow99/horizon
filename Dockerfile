@@ -57,7 +57,7 @@ ENV NODE_ENV=production
 ENV PORT=3001
 
 # Expose the nginx port
-EXPOSE 80
+EXPOSE 8072
 
 # Start pm2 for Next.js and Nginx
 CMD ["sh", "-c", "pm2 start npm --name 'nextjs' -- run start && nginx -g 'daemon off;'"]
