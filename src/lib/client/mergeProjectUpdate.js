@@ -1,22 +1,22 @@
 function normalizeDateOnly(value) {
-  if (!value) return '';
-  if (typeof value === 'string') {
+  if (!value) return "";
+  if (typeof value === "string") {
     const trimmed = value.trim();
-    if (!trimmed) return '';
+    if (!trimmed) return "";
     if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
       return trimmed;
     }
     const maybeDate = new Date(trimmed);
     if (!Number.isNaN(maybeDate.getTime())) {
-      return maybeDate.toISOString().split('T')[0];
+      return maybeDate.toISOString().split("T")[0];
     }
     return trimmed;
   }
   if (value instanceof Date) {
-    if (Number.isNaN(value.getTime())) return '';
-    return value.toISOString().split('T')[0];
+    if (Number.isNaN(value.getTime())) return "";
+    return value.toISOString().split("T")[0];
   }
-  return '';
+  return "";
 }
 
 function normalizeDateTime(value) {
@@ -25,7 +25,7 @@ function normalizeDateTime(value) {
     if (Number.isNaN(value.getTime())) return null;
     return value.toISOString();
   }
-  if (typeof value === 'string') {
+  if (typeof value === "string") {
     const trimmed = value.trim();
     if (!trimmed) return null;
     const parsed = new Date(trimmed);
@@ -39,13 +39,13 @@ function normalizeDateTime(value) {
 
 function normalizeTask(task = {}) {
   const normalized = { ...task };
-  if ('required' in normalized) {
+  if ("required" in normalized) {
     normalized.required = Boolean(normalized.required);
   }
-  if ('completed_at' in normalized) {
+  if ("completed_at" in normalized) {
     normalized.completed_at = normalizeDateTime(normalized.completed_at);
   }
-  if ('updated_at' in normalized) {
+  if ("updated_at" in normalized) {
     normalized.updated_at = normalizeDateTime(normalized.updated_at);
   }
   return normalized;
@@ -53,23 +53,41 @@ function normalizeTask(task = {}) {
 
 function normalizeProject(project = {}) {
   const normalized = { ...project };
-  if ('target_date' in normalized) {
+  if ("target_date" in normalized) {
     normalized.target_date = normalizeDateOnly(normalized.target_date);
   }
-  if ('archived' in normalized) {
+  if ("archived" in normalized) {
     normalized.archived = Boolean(normalized.archived);
   }
-  if ('archived_at' in normalized) {
+  if ("archived_at" in normalized) {
     normalized.archived_at = normalizeDateTime(normalized.archived_at);
   }
   return normalized;
 }
 
 function hasLegacyShape(update) {
-  return update && typeof update === 'object' && 'id' in update && 'tasks' in update && !('project' in update);
+  return (
+    update &&
+    typeof update === "object" &&
+    "id" in update &&
+    "tasks" in update &&
+    !("project" in update)
+  );
 }
 
-export function mergeProjectUpdate(existingProject = { tasks: [] }, serverUpdate) {
+const META_UPDATE_KEYS = new Set([
+  "tasks",
+  "updatedTasks",
+  "deletedTaskIds",
+  "fullProject",
+  "project",
+  "changedTaskIds",
+]);
+
+export function mergeProjectUpdate(
+  existingProject = { tasks: [] },
+  serverUpdate
+) {
   if (!serverUpdate) {
     return existingProject;
   }
@@ -90,18 +108,30 @@ export function mergeProjectUpdate(existingProject = { tasks: [] }, serverUpdate
   const updatePayload = { ...serverUpdate };
   const mergedProject = { ...existingProject };
 
-  if ('changedTaskIds' in mergedProject) {
+  if ("changedTaskIds" in mergedProject) {
     delete mergedProject.changedTaskIds;
   }
-  if ('deletedTaskIds' in mergedProject) {
+  if ("deletedTaskIds" in mergedProject) {
     delete mergedProject.deletedTaskIds;
+  }
+
+  const directProjectUpdates = {};
+  Object.keys(updatePayload).forEach((key) => {
+    if (!META_UPDATE_KEYS.has(key)) {
+      directProjectUpdates[key] = updatePayload[key];
+    }
+  });
+
+  if (Object.keys(directProjectUpdates).length > 0) {
+    Object.assign(mergedProject, normalizeProject(directProjectUpdates));
   }
 
   if (updatePayload.project) {
     Object.assign(mergedProject, normalizeProject(updatePayload.project));
   }
 
-  const fullProjectUpdate = Boolean(updatePayload.fullProject) || Array.isArray(updatePayload.tasks);
+  const fullProjectUpdate =
+    Boolean(updatePayload.fullProject) || Array.isArray(updatePayload.tasks);
 
   if (fullProjectUpdate) {
     const tasks = Array.isArray(updatePayload.tasks) ? updatePayload.tasks : [];
@@ -114,16 +144,20 @@ export function mergeProjectUpdate(existingProject = { tasks: [] }, serverUpdate
     : [];
   const deletedTaskIds = new Set(updatePayload.deletedTaskIds || []);
 
+  const shouldEnsureTasks = deletedTaskIds.size > 0 || updatedTasks.length > 0;
+
+  if (!shouldEnsureTasks) {
+    return mergedProject;
+  }
+
   if (!Array.isArray(mergedProject.tasks)) {
     mergedProject.tasks = [];
   }
 
   if (deletedTaskIds.size > 0) {
-    mergedProject.tasks = mergedProject.tasks.filter((task) => task && !deletedTaskIds.has(task.id));
-  }
-
-  if (updatedTasks.length === 0) {
-    return mergedProject;
+    mergedProject.tasks = mergedProject.tasks.filter(
+      (task) => task && !deletedTaskIds.has(task.id)
+    );
   }
 
   const updatedById = new Map();
@@ -136,7 +170,8 @@ export function mergeProjectUpdate(existingProject = { tasks: [] }, serverUpdate
   const seen = new Set();
   mergedProject.tasks = mergedProject.tasks.map((task) => {
     if (!task) return task;
-    const updated = (task.id && updatedById.get(task.id)) || updatedByName.get(task.name);
+    const updated =
+      (task.id && updatedById.get(task.id)) || updatedByName.get(task.name);
     if (updated) {
       const identifier = updated.id || updated.name;
       if (identifier) {

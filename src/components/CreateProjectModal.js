@@ -52,6 +52,7 @@ export default function CreateProjectModal({ isOpen, onClose, onCreate }) {
   });
 
   const projectTypes = getProjectTypes();
+  const projectNameInputId = "create-project-name";
 
   const handleSelectType = (typeId) => {
     setSelectedType(typeId);
@@ -233,10 +234,14 @@ export default function CreateProjectModal({ isOpen, onClose, onCreate }) {
             <div>
               {/* Project Name Input */}
               <div className="mb-6 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border-2 border-blue-200 dark:border-blue-700 rounded-xl p-4">
-                <label className="block text-sm font-semibold text-gray-900 dark:text-white mb-2">
+                <label
+                  htmlFor={projectNameInputId}
+                  className="block text-sm font-semibold text-gray-900 dark:text-white mb-2"
+                >
                   Project Name *
                 </label>
                 <input
+                  id={projectNameInputId}
                   type="text"
                   value={projectName}
                   onChange={(e) => setProjectName(e.target.value)}

@@ -5,6 +5,7 @@ A professional SaaS-style application for tracking production deployment readine
 ## 🎉 MySQL Database Integration
 
 The application now uses **MySQL** for persistent server-side storage instead of localStorage:
+
 - ✅ Data persists across devices and browsers
 - ✅ No browser storage limitations
 - ✅ Centralized data management
@@ -16,12 +17,14 @@ See [MYSQL_MIGRATION.md](./MYSQL_MIGRATION.md) for detailed migration documentat
 ## Features
 
 ### 🎯 Flexible Task Management
+
 - **Optional Default Checklist**: Choose to start with 18 pre-configured production tasks or start from scratch
 - **Fully Customizable**: Add, edit, or delete any tasks on a per-project basis
 - **Custom Task Creation**: Add your own tasks with custom categories, descriptions, and requirements
 - **Per-Project Flexibility**: Each project can have its own unique set of tasks
 
 ### 📊 Production-Ready Default Categories
+
 - **Infrastructure**: Environment setup, DNS, database backups, CDN
 - **Security**: SSL certificates, security audits
 - **Monitoring**: Analytics, error tracking, performance monitoring, uptime alerts
@@ -32,6 +35,7 @@ See [MYSQL_MIGRATION.md](./MYSQL_MIGRATION.md) for detailed migration documentat
 - **Deployment**: Production deployment steps
 
 ### ✨ Advanced Task Features
+
 - **Add Custom Tasks**: Create project-specific tasks with full details
 - **Delete Tasks**: Remove any task that doesn't apply to your project
 - **Required vs Optional**: Mark tasks as required for deployment readiness
@@ -65,6 +69,7 @@ See [MYSQL_MIGRATION.md](./MYSQL_MIGRATION.md) for detailed migration documentat
 ### Installation
 
 Install dependencies (if not already installed):
+
 ```bash
 npm install
 ```
@@ -72,6 +77,7 @@ npm install
 ## Setup & Installation
 
 ### Prerequisites
+
 - Node.js 18+ installed
 - MySQL database server
 - Database credentials (host, port, database name, user, password)
@@ -117,6 +123,7 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 ### Two Powerful Views
 
 #### 1. Dashboard View (Project-Centric)
+
 Perfect for managing individual projects and their full task lists.
 
 - See all projects as cards
@@ -125,9 +132,11 @@ Perfect for managing individual projects and their full task lists.
 - Detailed progress tracking
 
 #### 2. Table View (Task-Centric) ⭐ NEW
+
 Perfect for batch processing the same task across multiple projects.
 
 **Enhanced Visual Design:**
+
 - **Prominent Project Headers**: Each project column shows:
   - Project number badge
   - Full project name
@@ -142,6 +151,7 @@ Perfect for batch processing the same task across multiple projects.
 - **Sticky Headers & Columns**: Task details and progress always visible
 
 **Key Features:**
+
 - See all projects as columns, tasks as rows
 - Complete the same task for all projects at once
 - Filter by category or view all tasks
@@ -202,6 +212,7 @@ Perfect for batch processing the same task across multiple projects.
 ### Managing Tasks
 
 Each task includes:
+
 - **Checkbox**: Mark as complete/incomplete
 - **Task Name & Description**: Full details of what's needed
 - **Category Badge**: Visual category indicator (color-coded)
@@ -226,6 +237,7 @@ Each task includes:
 ### Category Filtering
 
 Click any category button to filter tasks:
+
 - All Tasks
 - Infrastructure
 - Security
@@ -239,6 +251,7 @@ Click any category button to filter tasks:
 ### Progress Tracking
 
 Two progress indicators per project:
+
 1. **Overall Progress**: All tasks (optional + required)
 2. **Required Tasks**: Only critical deployment requirements
 
@@ -253,8 +266,8 @@ To add a new category for tasks:
 
 ```javascript
 const categoryColors = {
-  'Infrastructure': 'bg-blue-100 text-blue-700 border-blue-200',
-  'YourCategory': 'bg-purple-100 text-purple-700 border-purple-200',
+  Infrastructure: "bg-blue-100 text-blue-700 border-blue-200",
+  YourCategory: "bg-purple-100 text-purple-700 border-purple-200",
   // ... other categories
 };
 ```
@@ -278,10 +291,63 @@ Edit `DEPLOYMENT_CHECKLIST` in `src/app/page.js`:
 ### Customizing the UI
 
 Modify colors and styles:
+
 - **Header gradient**: `from-slate-800 to-slate-900` in ProjectChecklist.js
 - **Progress bars**: `from-green-400 to-emerald-500`
 - **Button colors**: Update gradient classes in both files
 - **Category colors**: Modify the `categoryColors` object
+
+## Production Deployment
+
+### Required Environment Variables
+
+For production deployment in Docker, you must set these environment variables:
+
+```bash
+# Authentication
+NEXTAUTH_URL=https://yourdomain.com
+NEXTAUTH_SECRET=<generate with: openssl rand -base64 32>
+GOOGLE_CLIENT_ID=<your-google-client-id>
+GOOGLE_CLIENT_SECRET=<your-google-client-secret>
+
+# Database
+DATABASE_URL=<your-database-connection-string>
+
+# Node environment
+NODE_ENV=production
+```
+
+**Important**: Never commit `.env` files. Always use environment variables in production.
+
+### Generating NEXTAUTH_SECRET
+
+```bash
+openssl rand -base64 32
+```
+
+### Docker Compose Deployment
+
+Set environment variables before running:
+
+```bash
+docker-compose up -d
+```
+
+The container will:
+
+- Run Next.js on port 3001 (internally)
+- Proxy through Nginx on port 80/443 (externally on port 8067)
+- Handle OAuth/Google authentication with proper PKCE flow
+- Preserve cookies between requests for OAuth callback
+
+### Troubleshooting PKCE Errors
+
+If you see `InvalidCheck: pkceCodeVerifier value could not be parsed` errors:
+
+1. **Verify NEXTAUTH_URL** matches your actual domain
+2. **Check NEXTAUTH_SECRET** is set and the same across all instances
+3. **Ensure cookies are preserved** between OAuth redirects (check nginx config)
+4. **Verify NODE_ENV=production** is set for secure cookies
 
 ## Project Structure
 
@@ -306,13 +372,16 @@ src/
 ## Key Design Decisions
 
 ### Standardized Checklist
+
 All projects share the same deployment checklist to ensure consistency and completeness. This SaaS approach means:
+
 - No missed steps across different projects
 - Easier training for team members
 - Consistent deployment quality
 - Industry best practices baked in
 
 ### Professional SaaS Interface
+
 - Clean, modern design suitable for enterprise use
 - Dashboard-style overview with key metrics
 - Color-coded visual indicators for quick scanning
@@ -320,6 +389,7 @@ All projects share the same deployment checklist to ensure consistency and compl
 - Inline editing for efficient workflow
 
 ### Flexible but Structured
+
 - Required vs optional tasks allow flexibility
 - Notes field for project-specific details
 - Status tracking beyond simple checkboxes
@@ -372,11 +442,13 @@ Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/bui
 We've significantly enhanced the project creation experience with powerful new features:
 
 #### 🎯 Multiple Project Types
+
 - **6 pre-configured templates** instead of just 2 options
 - Choose from: Production Deployment, Website Launch, API Service, Mobile App, SaaS Product, or Custom
 - Each type comes with tailored preset tasks relevant to that project type
 
 #### ✏️ Edit Tasks During Creation
+
 - **Review and customize** preset tasks before creating your project
 - **Add custom tasks** with full details (name, description, category, status)
 - **Remove unwanted tasks** from the preset list
@@ -384,7 +456,9 @@ We've significantly enhanced the project creation experience with powerful new f
 - **Toggle required status** for any task
 
 #### 📂 10 Task Categories
+
 Organize tasks across 10 categories:
+
 - Infrastructure, Security, Monitoring, DevOps, Testing
 - Marketing, Legal, Deployment, Features, Documentation
 
@@ -409,15 +483,18 @@ Organize tasks across 10 categories:
 ### What's Changed
 
 **New Files:**
+
 - `src/config/projectTypes.js` - Project type definitions and templates
 - `src/components/CreateProjectModal.js` - New interactive creation modal
 
 **Updated Files:**
+
 - `src/components/DashboardClient.js` - Integrated new modal component
 
 ### Compatibility
 
 ✅ **100% Backward Compatible**
+
 - No database migration required
 - Existing projects unchanged
 - All existing features work as before
@@ -425,14 +502,14 @@ Organize tasks across 10 categories:
 
 ### Project Types Available
 
-| Type | Icon | Tasks | Description |
-|------|------|-------|-------------|
-| Production Deployment | 🚀 | 12 | Deploy web applications to production |
-| Website Launch | 🌐 | 10 | Launch marketing or company websites |
-| API Service | ⚡ | 10 | Deploy REST or GraphQL APIs |
-| Mobile App | 📱 | 10 | Launch iOS/Android applications |
-| SaaS Product | 💼 | 12 | Launch SaaS web applications |
-| Custom Project | ✨ | 0 | Start from scratch |
+| Type                  | Icon | Tasks | Description                           |
+| --------------------- | ---- | ----- | ------------------------------------- |
+| Production Deployment | 🚀   | 12    | Deploy web applications to production |
+| Website Launch        | 🌐   | 10    | Launch marketing or company websites  |
+| API Service           | ⚡   | 10    | Deploy REST or GraphQL APIs           |
+| Mobile App            | 📱   | 10    | Launch iOS/Android applications       |
+| SaaS Product          | 💼   | 12    | Launch SaaS web applications          |
+| Custom Project        | ✨   | 0     | Start from scratch                    |
 
 ### Try It Now
 
@@ -449,12 +526,14 @@ npm run dev
 ### Benefits
 
 **For Users:**
+
 - ⚡ **Faster setup** - Start with relevant preset tasks
 - 🎯 **More accurate** - Tailored templates for different project types
 - 🔧 **Fully customizable** - Edit everything before creating
 - 💾 **No rework** - Get it right the first time
 
 **For Developers:**
+
 - 📦 **Easy to extend** - Add new project types in one file
 - 🧩 **Modular** - Clean separation of concerns
 - 🔄 **Reusable** - Share templates across types
@@ -463,6 +542,7 @@ npm run dev
 ### Feedback & Support
 
 Have suggestions or found an issue?
+
 - Check the [troubleshooting guide](MIGRATION_GUIDE.md#troubleshooting)
 - Review [FAQ section](MIGRATION_GUIDE.md#frequently-asked-questions)
 - Check browser console for errors

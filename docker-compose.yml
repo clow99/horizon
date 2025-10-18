@@ -7,6 +7,13 @@ services:
         container_name: horizon
         restart: unless-stopped
         ports:
-            - "8067:3000"
+            - "8067:80"
         volumes:
             - /usr/share/nginx/:/etc/nginx/ssl/:ro
+        environment:
+            - NODE_ENV=production
+            - NEXTAUTH_URL=https://binnnd.com
+            - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
+            - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+            - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+            - DATABASE_URL=${DATABASE_URL}

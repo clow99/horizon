@@ -342,7 +342,10 @@ function ProjectChecklist({ project, onUpdate, onDelete, onModalStateChange }) {
   return (
     <>
       {/* Project Card - Clickable to open modal */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 overflow-hidden hover:shadow-lg transition-all duration-300 relative group">
+      <div
+        className="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 overflow-hidden hover:shadow-lg transition-all duration-300 relative group"
+        data-testid={`project-card-${project.id}`}
+      >
         {/* Template Badge - Top right */}
         {project.project_type && PROJECT_TYPES[project.project_type] && (
           <div className="absolute top-3 right-14 z-10 pointer-events-none">
@@ -556,7 +559,10 @@ function ProjectChecklist({ project, onUpdate, onDelete, onModalStateChange }) {
           <div className="space-y-3">
             <div className="flex items-center justify-between text-sm">
               <span className="text-gray-300">Overall Progress</span>
-              <span className="text-white font-semibold">
+              <span
+                className="text-white font-semibold"
+                data-testid="project-progress-value"
+              >
                 {completedTasks} / {totalTasks} tasks (
                 {Math.round(progressPercentage)}%)
                 {blockedTasks > 0 && (

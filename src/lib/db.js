@@ -1,24 +1,38 @@
-import mysql from 'mysql2/promise';
+import mysql from "mysql2/promise";
 
 let pool;
 
 export function getPool() {
   if (!pool) {
+    // Use SQLite for tests
+    if (process.env.NODE_ENV === "test") {
+      const { getTestDatabase } = require("../../tests/setup/database");
+      return getTestDatabase();
+    }
+
+    // Use MySQL for development and production
     pool = mysql.createPool({
       host: process.env.MYSQL_HOST,
-      port: parseInt(process.env.MYSQL_PORT || '3306'),
+      port: parseInt(process.env.MYSQL_PORT || "3306"),
       database: process.env.MYSQL_DATABASE,
       user: process.env.MYSQL_USER,
       password: process.env.MYSQL_PASSWORD,
       waitForConnections: true,
       connectionLimit: 10,
-      queueLimit: 0
+      queueLimit: 0,
     });
   }
   return pool;
 }
 
 export async function query(sql, params) {
+  // Handle test environment with SQLite
+  if (process.env.NODE_ENV === "test") {
+    const { executeQuery } = require("../../tests/setup/database");
+    return executeQuery(sql, params);
+  }
+
+  // Handle production/development with MySQL
   const pool = getPool();
   const [results] = await pool.execute(sql, params);
   return results;
@@ -27,7 +41,7 @@ export async function query(sql, params) {
 // Initialize database tables
 export async function initializeTables() {
   const pool = getPool();
-  
+
   try {
     // Create users table
     await pool.execute(`
@@ -70,7 +84,7 @@ export async function initializeTables() {
         ADD COLUMN archived TINYINT(1) DEFAULT 0
       `);
     } catch (error) {
-      if (error.code !== 'ER_DUP_FIELDNAME') {
+      if (error.code !== "ER_DUP_FIELDNAME") {
         throw error;
       }
     }
@@ -81,7 +95,7 @@ export async function initializeTables() {
         ADD COLUMN archived_at DATETIME NULL AFTER archived
       `);
     } catch (error) {
-      if (error.code !== 'ER_DUP_FIELDNAME') {
+      if (error.code !== "ER_DUP_FIELDNAME") {
         throw error;
       }
     }
@@ -92,7 +106,7 @@ export async function initializeTables() {
         ADD INDEX idx_archived (archived)
       `);
     } catch (error) {
-      if (error.code !== 'ER_DUP_KEYNAME') {
+      if (error.code !== "ER_DUP_KEYNAME") {
         throw error;
       }
     }
@@ -104,7 +118,7 @@ export async function initializeTables() {
         ADD COLUMN project_type VARCHAR(50) NULL AFTER status
       `);
     } catch (error) {
-      if (error.code !== 'ER_DUP_FIELDNAME') {
+      if (error.code !== "ER_DUP_FIELDNAME") {
         throw error;
       }
     }
@@ -115,7 +129,7 @@ export async function initializeTables() {
         ADD INDEX idx_project_type (project_type)
       `);
     } catch (error) {
-      if (error.code !== 'ER_DUP_KEYNAME') {
+      if (error.code !== "ER_DUP_KEYNAME") {
         throw error;
       }
     }
@@ -127,7 +141,7 @@ export async function initializeTables() {
         ADD COLUMN display_order INT NULL AFTER project_type
       `);
     } catch (error) {
-      if (error.code !== 'ER_DUP_FIELDNAME') {
+      if (error.code !== "ER_DUP_FIELDNAME") {
         throw error;
       }
     }
@@ -138,7 +152,7 @@ export async function initializeTables() {
         ADD INDEX idx_display_order (display_order)
       `);
     } catch (error) {
-      if (error.code !== 'ER_DUP_KEYNAME') {
+      if (error.code !== "ER_DUP_KEYNAME") {
         throw error;
       }
     }
@@ -169,15 +183,15 @@ export async function initializeTables() {
       `);
     } catch (error) {
       // Ignore if column doesn't exist
-      if (error.code !== 'ER_CANT_DROP_FIELD_OR_KEY') {
-        console.log('Note: required column may not exist (this is fine)');
+      if (error.code !== "ER_CANT_DROP_FIELD_OR_KEY") {
+        console.log("Note: required column may not exist (this is fine)");
       }
     }
 
-    console.log('Database tables initialized successfully');
+    console.log("Database tables initialized successfully");
     return true;
   } catch (error) {
-    console.error('Error initializing database tables:', error);
+    console.error("Error initializing database tables:", error);
     throw error;
   }
 }

@@ -46,8 +46,12 @@ RUN rm /etc/nginx/sites-available/default \
 COPY ./default.conf /etc/nginx/sites-available/default
 RUN ln -s /etc/nginx/sites-available/default /etc/nginx/sites-enabled/default
 
-# Expose the application port
-EXPOSE 8000
+# Set environment variables
+ENV NODE_ENV=production
+ENV PORT=3001
+
+# Expose the nginx port
+EXPOSE 80
 
 # Start pm2 for Next.js and Nginx
 CMD ["sh", "-c", "pm2 start npm --name 'nextjs' -- run start && nginx -g 'daemon off;'"]
