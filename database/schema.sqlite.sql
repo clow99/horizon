@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS projects (
   status TEXT DEFAULT 'Planning',
   archived INTEGER DEFAULT 0,
   archived_at TEXT,
+  display_order INTEGER DEFAULT 0,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now')),
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -26,6 +27,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   id TEXT PRIMARY KEY,
   project_id TEXT NOT NULL,
   name TEXT NOT NULL,
+  description TEXT,
   category TEXT,
   status TEXT DEFAULT 'Not Started',
   required INTEGER DEFAULT 0,

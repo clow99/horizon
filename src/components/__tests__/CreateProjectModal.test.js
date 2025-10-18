@@ -108,11 +108,8 @@ describe("CreateProjectModal", () => {
     const tasks = await screen.findAllByRole("button", { name: /edit task/i });
     await user.click(tasks[0]);
 
-    // Find and modify the task name
-    const nameInputs = screen.getAllByDisplayValue(/Task/);
-    const taskNameInput = nameInputs.find(
-      (input) => input.placeholder === undefined
-    );
+    // Find and modify the task name - get the first input that has an id starting with "edit-task-name"
+    const taskNameInput = document.querySelector('[id^="edit-task-name-"]');
     await user.clear(taskNameInput);
     await user.type(taskNameInput, "Modified Task Name");
 

@@ -292,10 +292,14 @@ export default function CreateProjectModal({ isOpen, onClose, onCreate }) {
                   </h3>
                   <div className="space-y-3">
                     <div>
-                      <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                      <label
+                        htmlFor="new-task-name"
+                        className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5"
+                      >
                         Task Name *
                       </label>
                       <input
+                        id="new-task-name"
                         type="text"
                         value={newTask.name}
                         onChange={(e) =>
@@ -307,10 +311,14 @@ export default function CreateProjectModal({ isOpen, onClose, onCreate }) {
                     </div>
 
                     <div>
-                      <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                      <label
+                        htmlFor="new-task-description"
+                        className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5"
+                      >
                         Description
                       </label>
                       <textarea
+                        id="new-task-description"
                         value={newTask.description}
                         onChange={(e) =>
                           setNewTask({
@@ -326,10 +334,14 @@ export default function CreateProjectModal({ isOpen, onClose, onCreate }) {
 
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                        <label
+                          htmlFor="new-task-category"
+                          className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5"
+                        >
                           Category
                         </label>
                         <select
+                          id="new-task-category"
                           value={newTask.category}
                           onChange={(e) =>
                             setNewTask({ ...newTask, category: e.target.value })
@@ -345,10 +357,14 @@ export default function CreateProjectModal({ isOpen, onClose, onCreate }) {
                       </div>
 
                       <div>
-                        <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                        <label
+                          htmlFor="new-task-status"
+                          className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5"
+                        >
                           Status
                         </label>
                         <select
+                          id="new-task-status"
                           value={newTask.status}
                           onChange={(e) =>
                             setNewTask({ ...newTask, status: e.target.value })
@@ -436,10 +452,14 @@ export default function CreateProjectModal({ isOpen, onClose, onCreate }) {
                         // Edit Mode
                         <div className="space-y-3">
                           <div>
-                            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                            <label
+                              htmlFor={`edit-task-name-${task.id}`}
+                              className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1"
+                            >
                               Task Name
                             </label>
                             <input
+                              id={`edit-task-name-${task.id}`}
                               type="text"
                               value={task.name}
                               onChange={(e) =>
@@ -451,10 +471,14 @@ export default function CreateProjectModal({ isOpen, onClose, onCreate }) {
                             />
                           </div>
                           <div>
-                            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                            <label
+                              htmlFor={`edit-task-description-${task.id}`}
+                              className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1"
+                            >
                               Description
                             </label>
                             <textarea
+                              id={`edit-task-description-${task.id}`}
                               value={task.description}
                               onChange={(e) =>
                                 handleUpdateTask(task.id, {
@@ -467,10 +491,14 @@ export default function CreateProjectModal({ isOpen, onClose, onCreate }) {
                           </div>
                           <div className="grid grid-cols-2 gap-2">
                             <div>
-                              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                              <label
+                                htmlFor={`edit-task-category-${task.id}`}
+                                className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1"
+                              >
                                 Category
                               </label>
                               <select
+                                id={`edit-task-category-${task.id}`}
                                 value={task.category}
                                 onChange={(e) =>
                                   handleUpdateTask(task.id, {
@@ -487,10 +515,14 @@ export default function CreateProjectModal({ isOpen, onClose, onCreate }) {
                               </select>
                             </div>
                             <div>
-                              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                              <label
+                                htmlFor={`edit-task-status-${task.id}`}
+                                className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1"
+                              >
                                 Status
                               </label>
                               <select
+                                id={`edit-task-status-${task.id}`}
                                 value={task.status}
                                 onChange={(e) =>
                                   handleUpdateTask(task.id, {

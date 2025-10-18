@@ -57,7 +57,7 @@ describe("Database Integration", () => {
       ]);
 
       expect(results).toHaveLength(1);
-      expect(results[0].name).toBe("Test Project");
+      expect(results[0].name).toBe(project.name);
       expect(results[0].user_id).toBe(user.id);
     });
 

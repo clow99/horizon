@@ -222,11 +222,15 @@ export default function ProfileClient({ user }) {
             <div className="space-y-6">
               {/* Name Field */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <label
+                  htmlFor="profile-name"
+                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
+                >
                   Full Name
                 </label>
                 {isEditing ? (
                   <input
+                    id="profile-name"
                     type="text"
                     name="name"
                     value={formData.name}

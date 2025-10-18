@@ -1,9 +1,10 @@
-import { query, resetDatabase } from "@/lib/db";
-import { createUser } from "@/tests/setup/factories";
+import { query } from "@/lib/db";
+import { createUser } from "../../setup/factories";
+import { resetTestDatabase } from "../../setup/database";
 
 describe("NextAuth Callbacks Integration Tests", () => {
   beforeEach(async () => {
-    await resetDatabase();
+    resetTestDatabase();
     jest.clearAllMocks();
   });
 

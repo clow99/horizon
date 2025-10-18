@@ -43,12 +43,12 @@ jest.mock("@/components/Toast", () => ({ toasts = [], onDismiss }) => (
   </div>
 ));
 
-const createModalSpy = jest.fn();
+const mockCreateModalSpy = jest.fn();
 jest.mock(
   "@/components/CreateProjectModal",
   () =>
     ({ isOpen, onCreate, onClose }) => {
-      createModalSpy({ isOpen, onCreate, onClose });
+      mockCreateModalSpy({ isOpen, onCreate, onClose });
       if (!isOpen) return null;
       return (
         <div data-testid="create-project-modal">
@@ -114,7 +114,11 @@ describe("DashboardClient", () => {
     expect(within(readyCard).getByText("1")).toBeInTheDocument();
 
     const tasksCard = screen.getByText(/Tasks Completed/i).closest("div");
-    expect(within(tasksCard).getByText(/3\/4/)).toBeInTheDocument();
+    expect(
+      within(tasksCard).getByText((content, element) => {
+        return element.textContent === "3/4";
+      })
+    ).toBeInTheDocument();
 
     const totalsCard = screen.getByText(/Total Projects/i).closest("div");
     expect(within(totalsCard).getByText("2")).toBeInTheDocument();

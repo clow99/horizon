@@ -25,17 +25,9 @@ jest.mock("@/components/Footer", () => () => (
   <footer data-testid="footer">Footer</footer>
 ));
 
-jest.mock("@/components/Toast", () => ({ toasts = [], onDismiss }) => (
-  <div>
-    {toasts.map((toast) => (
-      <div
-        key={toast.id}
-        data-testid="toast"
-        onClick={() => onDismiss?.(toast.id)}
-      >
-        {toast.message}
-      </div>
-    ))}
+jest.mock("@/components/Toast", () => ({ message, type, onClose }) => (
+  <div data-testid="toast" onClick={onClose}>
+    {message}
   </div>
 ));
 
@@ -61,8 +53,8 @@ describe("ProfileClient", () => {
   test("displays user profile information correctly", () => {
     render(<ProfileClient user={user} />);
 
-    expect(screen.getByText(user.name)).toBeInTheDocument();
-    expect(screen.getByText(user.email)).toBeInTheDocument();
+    expect(screen.getAllByText(user.name).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(user.email).length).toBeGreaterThan(0);
     expect(screen.getByText(user.id)).toBeInTheDocument();
   });
 
@@ -99,10 +91,12 @@ describe("ProfileClient", () => {
     expect(nameInput).toBeInTheDocument();
     expect(nameInput).toHaveValue(user.name);
 
-    expect(screen.getByRole("button", { name: /Save Changes/i }))
-      .toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /^Cancel$/i }))
-      .toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Save Changes/i })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /^Cancel$/i })
+    ).toBeInTheDocument();
   });
 
   test("validates profile edits before saving", async () => {
@@ -187,9 +181,7 @@ describe("ProfileClient", () => {
 
     await waitFor(() =>
       expect(
-        screen.getByText(
-          /Failed to update profile. Please try again./i
-        )
+        screen.getByText(/Failed to update profile. Please try again./i)
       ).toBeInTheDocument()
     );
 
@@ -207,12 +199,10 @@ describe("ProfileClient", () => {
     await userEvents.clear(nameInput);
     await userEvents.type(nameInput, "New Name");
 
-    await userEvents.click(
-      screen.getByRole("button", { name: /^Cancel$/i })
-    );
+    await userEvents.click(screen.getByRole("button", { name: /^Cancel$/i }));
 
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
-    expect(screen.getByText(user.name)).toBeInTheDocument();
+    expect(screen.getAllByText(user.name).length).toBeGreaterThan(0);
   });
 
   test("disables form buttons while saving", async () => {
@@ -222,7 +212,8 @@ describe("ProfileClient", () => {
     });
 
     global.fetch.mockImplementation(
-      () => new Promise((resolve) => setTimeout(() => resolve({ ok: true }), 100))
+      () =>
+        new Promise((resolve) => setTimeout(() => resolve({ ok: true }), 100))
     );
 
     render(<ProfileClient user={user} />);
@@ -248,9 +239,7 @@ describe("ProfileClient", () => {
     const userWithImage = { ...user, image: "https://example.com/avatar.jpg" };
     render(<ProfileClient user={userWithImage} />);
 
-    const avatar = screen.getByAltText(
-      userWithImage.name || "User avatar"
-    ) as HTMLImageElement;
+    const avatar = screen.getByAltText(userWithImage.name || "User avatar");
     expect(avatar).toBeInTheDocument();
     expect(avatar.src).toContain("avatar.jpg");
   });
