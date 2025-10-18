@@ -4,6 +4,8 @@ import { query } from "@/lib/db";
 import { v4 as uuidv4 } from "uuid";
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
+  // Trust proxy headers (needed behind reverse proxies)
+  trustHost: true,
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID,
