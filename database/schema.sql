@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS users (
   email VARCHAR(255) NOT NULL UNIQUE COMMENT 'User email address',
   name VARCHAR(255) COMMENT 'User full name',
   image TEXT COMMENT 'User profile image URL',
+  google_sub VARCHAR(255) CHARACTER SET ascii COLLATE ascii_bin NULL UNIQUE COMMENT 'Stable Google account subject',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT 'Record creation timestamp',
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'Last update timestamp',
   INDEX idx_email (email)

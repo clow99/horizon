@@ -5,8 +5,8 @@ import { buildPlaywrightAuthPayload } from "../setup/auth-session.js";
 const SESSION_MAX_AGE_SECONDS = 24 * 60 * 60;
 const SESSION_COOKIE_NAME =
   process.env.NEXTAUTH_URL && process.env.NEXTAUTH_URL.startsWith("https://")
-    ? "__Secure-next-auth.session-token"
-    : "next-auth.session-token";
+    ? "__Secure-horizon.oauth-v2.session-token"
+    : "horizon.oauth-v2.session-token";
 const DEFAULT_SECRET = "test-secret-key-for-testing-only";
 
 export const test = base.extend({

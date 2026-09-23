@@ -22,13 +22,26 @@ Users MUST authenticate using Google OAuth to access the application.
 **And** upon successful authentication, they are redirected back to the application  
 **And** a session is created with their user information
 
-#### Scenario: User data is synchronized with database
+#### Scenario: Verified Google identity is synchronized with database
 
-**Given** a user successfully authenticates with Google  
-**When** the authentication callback processes  
-**Then** if the user email doesn't exist in the database, a new user record is created with UUID  
-**And** if the user email exists, their name and image are updated  
+**Given** Google returns an explicitly verified email and stable subject
+**When** the authentication callback processes
+**Then** an existing user is selected by its linked Google subject
+**And** a new user receives a UUID and unique Google subject
 **And** the user's UUID is added to their session
+
+#### Scenario: Existing account linking
+
+**Given** an existing user has no Google subject
+**When** a verified Google identity matches its Gmail address
+**Then** the subject is linked to the existing UUID without replacing its data
+**And** an existing non-Gmail address requires independent owner recovery
+
+#### Scenario: Unverified or conflicting identity
+
+**Given** Google does not explicitly verify the email, or a different subject is linked to that email
+**When** the authentication callback processes
+**Then** sign-in is denied without changing account ownership
 
 ---
 

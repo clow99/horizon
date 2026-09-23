@@ -50,6 +50,7 @@ export async function initializeTables() {
         email VARCHAR(255) NOT NULL UNIQUE,
         name VARCHAR(255),
         image TEXT,
+        google_sub VARCHAR(255) CHARACTER SET ascii COLLATE ascii_bin NULL UNIQUE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         INDEX idx_email (email)
