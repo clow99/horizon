@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import DashboardClient from "../DashboardClient";
 
@@ -29,17 +29,9 @@ jest.mock("@/components/Footer", () => () => (
   <footer data-testid="footer">Footer</footer>
 ));
 
-jest.mock("@/components/Toast", () => ({ toasts = [], onDismiss }) => (
-  <div>
-    {toasts.map((toast) => (
-      <div
-        key={toast.id}
-        data-testid="toast"
-        onClick={() => onDismiss?.(toast.id)}
-      >
-        {toast.message}
-      </div>
-    ))}
+jest.mock("@/components/Toast", () => ({ message, onClose }) => (
+  <div data-testid="toast" onClick={onClose}>
+    {message}
   </div>
 ));
 
@@ -125,10 +117,10 @@ describe("DashboardClient", () => {
   });
 
   test("adds a project optimistically and rolls back on API failure", async () => {
-    global.fetch.mockResolvedValue({
-      ok: false,
-      text: jest.fn().mockResolvedValue("error"),
-    });
+    let resolveRequest;
+    global.fetch.mockReturnValue(new Promise((resolve) => {
+      resolveRequest = resolve;
+    }));
 
     const user = userEvent.setup();
     render(
@@ -143,6 +135,13 @@ describe("DashboardClient", () => {
     expect(screen.getByText("Modal Project")).toBeInTheDocument();
 
     await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      resolveRequest({
+        ok: false,
+        text: jest.fn().mockResolvedValue("error"),
+      });
+    });
 
     await waitFor(() =>
       expect(screen.queryByText("Modal Project")).not.toBeInTheDocument()
@@ -161,10 +160,10 @@ describe("DashboardClient", () => {
       target_date: "2025-05-01",
     };
 
-    global.fetch.mockResolvedValue({
-      ok: true,
-      json: jest.fn().mockResolvedValue(createdProject),
-    });
+    let resolveRequest;
+    global.fetch.mockReturnValue(new Promise((resolve) => {
+      resolveRequest = resolve;
+    }));
 
     const user = userEvent.setup();
     render(
@@ -175,6 +174,13 @@ describe("DashboardClient", () => {
     await user.click(screen.getByText(/Confirm Modal Project/i));
 
     expect(screen.getByText("Modal Project")).toBeInTheDocument();
+
+    await act(async () => {
+      resolveRequest({
+        ok: true,
+        json: jest.fn().mockResolvedValue(createdProject),
+      });
+    });
 
     await waitFor(() =>
       expect(screen.getByText("Server Project")).toBeInTheDocument()
@@ -341,7 +347,7 @@ describe("DashboardClient", () => {
     );
 
     const sortSelect = screen.getByDisplayValue(/Custom Order/i);
-    await user.selectOption(sortSelect, "alpha");
+    await user.selectOptions(sortSelect, "alpha");
 
     // After alphabetical sort, Alpha should appear first in the rendered list
     await waitFor(() => {
@@ -390,7 +396,7 @@ describe("DashboardClient", () => {
     );
 
     const sortSelect = screen.getByDisplayValue(/Custom Order/i);
-    await user.selectOption(sortSelect, "completion");
+    await user.selectOptions(sortSelect, "completion");
 
     await waitFor(() => {
       const projectItems = screen.getAllByTestId(/^checklist-/);

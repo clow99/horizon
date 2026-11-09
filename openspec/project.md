@@ -6,12 +6,12 @@ Horizon is a professional SaaS application for tracking production deployment re
 
 ## Tech Stack
 
-- **Framework**: Next.js 15.5.4 (React 19.1.0) with App Router
+- **Framework**: Next.js 15.5.29 (React 19.1.10) with App Router
 - **Database**: MySQL 8.0+ (via mysql2 package)
 - **Authentication**: NextAuth.js 5.0 (Google OAuth provider)
 - **Styling**: Tailwind CSS 4 with PostCSS
 - **Deployment**: Docker-ready with nginx configuration
-- **Runtime**: Node.js 18+
+- **Runtime**: Node.js 22
 - **State Management**: React hooks and server-side rendering
 - **Unique IDs**: UUID v4 for all entity identifiers
 

@@ -311,7 +311,11 @@ GOOGLE_CLIENT_ID=<your-google-client-id>
 GOOGLE_CLIENT_SECRET=<your-google-client-secret>
 
 # Database
-DATABASE_URL=<your-database-connection-string>
+MYSQL_HOST=<your-database-host>
+MYSQL_PORT=3306
+MYSQL_DATABASE=<your-database-name>
+MYSQL_USER=<your-database-user>
+MYSQL_PASSWORD=<your-database-password>
 
 # Node environment
 NODE_ENV=production
@@ -327,18 +331,15 @@ openssl rand -base64 32
 
 ### Docker Compose Deployment
 
-Set environment variables before running:
+Create an untracked `.env` containing the variables above, then build and start:
 
 ```bash
-docker-compose up -d
+docker compose up -d --build
 ```
 
-The container will:
+The Node 22 container runs the Next.js standalone server as a non-root user on port 3000. Compose binds it to `127.0.0.1:3017`. Configure the host reverse proxy separately when public access is required, and preserve its existing OAuth domain and cookie settings.
 
-- Run Next.js on port 3001 (internally)
-- Proxy through Nginx on port 80/443 (externally on port 8067)
-- Handle OAuth/Google authentication with proper PKCE flow
-- Preserve cookies between requests for OAuth callback
+The lockfile pins the security-patched Next.js 15.5.29 and React 19.1.10 releases. The `sharp` override keeps image processing on the patched 0.35.5 backend. Rebuild the image after dependency updates; restarting the old image does not update its packages.
 
 ### Troubleshooting PKCE Errors
 

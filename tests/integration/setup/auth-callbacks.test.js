@@ -1,6 +1,6 @@
 import { query } from "@/lib/db";
 import { createUser } from "../../setup/factories";
-import { resetTestDatabase } from "../../setup/database";
+import { resetTestDatabase, seedUser } from "../../setup/database";
 
 describe("NextAuth Callbacks Integration Tests", () => {
   beforeEach(async () => {
@@ -42,7 +42,7 @@ describe("NextAuth Callbacks Integration Tests", () => {
     });
 
     test("updates existing user on login", async () => {
-      const user = await createUser({
+      const user = seedUser({
         name: "Original Name",
         image: "https://example.com/original.jpg",
       });
@@ -55,20 +55,22 @@ describe("NextAuth Callbacks Integration Tests", () => {
         user.email,
       ]);
 
-      if (existingUser.length > 0) {
-        await query("UPDATE users SET name = ?, image = ? WHERE email = ?", [
-          updatedName,
-          updatedImage,
-          user.email,
-        ]);
+      expect(existingUser).toHaveLength(1);
+      expect(existingUser[0].id).toBe(user.id);
 
-        const updated = await query("SELECT * FROM users WHERE id = ?", [
-          user.id,
-        ]);
+      await query("UPDATE users SET name = ?, image = ? WHERE email = ?", [
+        updatedName,
+        updatedImage,
+        user.email,
+      ]);
 
-        expect(updated[0].name).toBe(updatedName);
-        expect(updated[0].image).toBe(updatedImage);
-      }
+      const updated = await query("SELECT * FROM users WHERE id = ?", [
+        user.id,
+      ]);
+
+      expect(updated).toHaveLength(1);
+      expect(updated[0].name).toBe(updatedName);
+      expect(updated[0].image).toBe(updatedImage);
     });
 
     test("prevents duplicate user creation", async () => {
@@ -331,8 +333,8 @@ describe("NextAuth Callbacks Integration Tests", () => {
     });
 
     test("maintains user isolation across multiple sessions", async () => {
-      const user1 = await createUser({ email: "user1@example.com" });
-      const user2 = await createUser({ email: "user2@example.com" });
+      const user1 = seedUser({ email: "user1@example.com" });
+      const user2 = seedUser({ email: "user2@example.com" });
 
       // Each user's data should be isolated
       const user1Data = await query("SELECT * FROM users WHERE id = ?", [
@@ -342,6 +344,8 @@ describe("NextAuth Callbacks Integration Tests", () => {
         user2.id,
       ]);
 
+      expect(user1Data).toHaveLength(1);
+      expect(user2Data).toHaveLength(1);
       expect(user1Data[0].email).toBe("user1@example.com");
       expect(user2Data[0].email).toBe("user2@example.com");
       expect(user1Data[0].id).not.toBe(user2Data[0].id);

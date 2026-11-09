@@ -6,15 +6,7 @@ services:
     image: horizon
     container_name: horizon
     restart: unless-stopped
+    env_file:
+      - .env
     ports:
-      - "8072:8072"
-    volumes:
-      - /usr/share/nginx/:/etc/nginx/ssl/:ro
-    environment:
-      - NODE_ENV=production
-      - NEXTAUTH_URL=https://horizon-tasks.com
-      - AUTH_URL=https://horizon-tasks.com
-      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
-      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
-      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
-      - DATABASE_URL=${DATABASE_URL}
+      - "127.0.0.1:3017:3000"
